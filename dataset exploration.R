@@ -29,6 +29,110 @@ data_cols_to_drop <- c("parameterSedimentDepthSampled","parameterSpecies",
 # And left joining data to metadata
 data <- data %>% select(-all_of(data_cols_to_drop)) %>% left_join(metadata, by = "monitoringSiteIdentifier")
 rm(meta_cols_to_keep, data_cols_to_drop, metadata)
+# Visdat on dataframe prior to any modification
+vis_dat(data, warn_large_data = F)
+# Converting the full date column (phenomenonTimeSamplingDate) from character into a date object
+data$date <- as.Date(x = data$phenomenonTimeSamplingDate, format ="%d/%m/%Y %H:%M:%S") 
+# Creating a subset of data for quantified analytical targets
+data_q <- data %>% filter(resultQualityObservedValueBelowLOQ == "False")
+
+# Statistical overview of the measured values per analytical target
+recap_table <- data %>% filter(resultQualityObservedValueBelowLOQ == "False") %>%
+  group_by(observedPropertyDeterminandLabel) %>%
+  summarize(min = min(resultObservedValue, na.rm=T), 
+            max = max(resultObservedValue, na.rm=T),
+            mean = mean(resultObservedValue, na.rm=T),
+            sd = sd(resultObservedValue, na.rm=T),
+            sample_size = n()) %>%
+  arrange(desc(sample_size))
+
+# Statistical overview of the measured values per analytical target
+recap_table_WB <- data %>% filter(resultQualityObservedValueBelowLOQ == "False") %>%
+  group_by(parameterWaterBodyCategory) %>%
+  summarize(min = min(resultObservedValue, na.rm=T), 
+            max = max(resultObservedValue, na.rm=T),
+            mean = mean(resultObservedValue, na.rm=T),
+            sd = sd(resultObservedValue, na.rm=T),
+            sample_size = n()) %>%
+  arrange(desc(sample_size))
+
+
+# Creating a vector of names for the most sampled analytical targets
+sampling_threshold <- 5000
+analytical_targets <- recap_table %>% filter(sample_size > sampling_threshold)  %>% select(observedPropertyDeterminandLabel)
+analytical_targets <- as.vector(analytical_targets$observedPropertyDeterminandLabel)
+# Subsetting the dataset for those analytical target and filtering out the values at or below LOQ
+data_topAT <- data_q %>% filter(observedPropertyDeterminandLabel %in% analytical_targets)
+# Assessing the normality of data per analytical target across all measurements (site & year)
+# ggplot(data=data_topAT
+#        aes())
+
+# Special case of Nitrate
+data_no3 <- data_q[data_q$observedPropertyDeterminandLabel == "Nitrate",] 
+data_no3$sim_norm_distr <- rnorm(n = recap_table[recap_table$observedPropertyDeterminandLabel=="Nitrate",]$sample_size,
+                                 mean = recap_table[recap_table$observedPropertyDeterminandLabel=="Nitrate",]$mean,
+                                 sd = recap_table[recap_table$observedPropertyDeterminandLabel=="Nitrate",]$sd) 
+
+ggplot(data=data_no3, aes(x=resultObservedValue)) + geom_histogram(stat="density")
+ggplot(data=data_no3, aes(x=resultObservedValue)) + geom_histogram(stat="density", position ="dodge") +facet_wrap(~parameterWaterBodyCategory) +xlim(0, 50)
+
+qqplot(x=data_no3$resultObservedValue, y=data_no3$sim_norm_distr)
+# Overall distribution of NO3 measurement across all years and site is not normally distributed
+
+# Looking at the distribution of NO3 measurements per site and year
+data_no3 %>% group_by(monitoringSiteIdentifier,phenomenonTimeSamplingDate_year) %>% summarise(meas_count=n()) %>% arrange(desc(meas_count))
+# Site CHNTG15 has between 4 and 16 measurements per year over a 15-year period (total number of observations = 159)
+data_no3_CHNTG15 <- data_no3 %>% filter(monitoringSiteIdentifier == "CHNTG15")
+data_no3_CHNTG15 %>% group_by(phenomenonTimeSamplingDate_year) %>% summarise(meas_count=n()) %>% arrange(desc(meas_count))
+ggplot(data=data_no3_CHNTG15, aes(x=as.factor(phenomenonTimeSamplingDate_year), y=resultObservedValue)) + geom_boxplot()
+
+# Let's check the normality of pH measurements distribution over all sites and years (as it is the 2nd most sampled analytical target after Nitrate)
+data_pH <- data_q[data_q$observedPropertyDeterminandLabel == "pH",] 
+data_pH$sim_norm_distr <- rnorm(n = recap_table[recap_table$observedPropertyDeterminandLabel=="pH",]$sample_size,
+                                 mean = recap_table[recap_table$observedPropertyDeterminandLabel=="pH",]$mean,
+                                 sd = recap_table[recap_table$observedPropertyDeterminandLabel=="pH",]$sd) 
+# Plotting pH value distribution and qqplot for all sites and years
+ggplot(data=data_pH, aes(x=resultObservedValue)) + geom_histogram(stat="density") + facet_wrap(~parameterWaterBodyCategory)
+qqplot(x=data_pH$resultObservedValue, y=data_pH$sim_norm_distr)
+# Plotting the pH value distributions per type of Water Body
+ggplot(data=data_pH, aes(x=resultObservedValue)) + geom_histogram(stat="density") + facet_wrap(~parameterWaterBodyCategory)
+# Creating a separate theoretical normal distribution for each group (i.e. each body of water category)
+
+recap_pH_per_BoWtype <- data_pH %>% group_by(parameterWaterBodyCategory) %>%
+  summarize(min = min(resultObservedValue, na.rm=T), 
+            max = max(resultObservedValue, na.rm=T),
+            mean = mean(resultObservedValue, na.rm=T),
+            sd = sd(resultObservedValue, na.rm=T),
+            sample_size = n()) %>%
+  arrange(desc(sample_size))
+
+# QQ Plot for Ground Water pH measurements
+qqplot(x = data_pH[data_pH$parameterWaterBodyCategory == "GW",]$resultObservedValue,
+       y = rnorm(n = recap_pH_per_BoWtype[recap_pH_per_BoWtype$parameterWaterBodyCategory=="GW",]$sample_size,
+                 mean = recap_pH_per_BoWtype[recap_pH_per_BoWtype$parameterWaterBodyCategory=="GW",]$mean,
+                 sd = recap_pH_per_BoWtype[recap_pH_per_BoWtype$parameterWaterBodyCategory=="GW",]$sd)
+)
+## QQ Plot for River Water pH measurements
+qqplot(x = data_pH[data_pH$parameterWaterBodyCategory == "RW",]$resultObservedValue,
+       y = rnorm(n = recap_pH_per_BoWtype[recap_pH_per_BoWtype$parameterWaterBodyCategory=="RW",]$sample_size,
+                 mean = recap_pH_per_BoWtype[recap_pH_per_BoWtype$parameterWaterBodyCategory=="RW",]$mean,
+                 sd = recap_pH_per_BoWtype[recap_pH_per_BoWtype$parameterWaterBodyCategory=="RW",]$sd)
+)
+
+
+obs_val <- "Electrical conductivity"
+data_cond <- data_q[data_q$observedPropertyDeterminandLabel == obs_val,] 
+data_cond$sim_norm_distr <- rnorm(n = recap_table[recap_table$observedPropertyDeterminandLabel==obs_val,]$sample_size,
+                                 mean = recap_table[recap_table$observedPropertyDeterminandLabel==obs_val,]$mean,
+                                 sd = recap_table[recap_table$observedPropertyDeterminandLabel==obs_val,]$sd) 
+
+ggplot(data=data_cond, aes(x=resultObservedValue)) + geom_histogram(stat="density")
+ggplot(data=data_cond, aes(x=resultObservedValue)) + geom_histogram(stat="density", position ="dodge") +facet_grid(parameterWaterBodyCategory~rbdName)
+
+qqplot(x=data_cond$resultObservedValue, y=data_no3$sim_norm_distr)
+
+
+
 
 ## Preliminary questions about the data
 #How many uniquely monitored locations
@@ -70,26 +174,6 @@ meas_per_quant_target <- data %>% filter(resultQualityObservedValueBelowLOQ == "
 ggplot(meas_per_quant_target[1:10,], aes(x=as.factor(observedPropertyDeterminandLabel), y=n)) + 
   geom_bar(stat="identity") +
   theme(axis.text.x = element_text(angle = 90))
-
-# Statistical overview of the measured values per analytical target
-recap_table <- data %>% filter(resultQualityObservedValueBelowLOQ == "False") %>%
-         group_by(observedPropertyDeterminandLabel) %>%
-         summarize(min = min(resultObservedValue, na.rm=T), 
-                   max = max(resultObservedValue, na.rm=T),
-                   mean = mean(resultObservedValue, na.rm=T),
-                   sd = sd(resultObservedValue, na.rm=T))
-
-# Creating a vector of names for the most sampled analytical targets
-analytical_targets <- meas_per_quant_target[1:10,]$observedPropertyDeterminandLabel
-# Subsetting the dataset for those analytical target and filtering out the values at or below LOQ
-data_top10_analyticaltargets <- data %>% filter(observedPropertyDeterminandLabel %in% analytical_targets & resultQualityObservedValueBelowLOQ == "False")
-# Parsing the full date column (phenomenonTimeSamplingDate) and expressing as POSIXCT object (lubridate package)
-data_top10_analyticaltargets$date <- as_date(data_top10_analyticaltargets$phenomenonTimeSamplingDate)
-# won't work, dmy format needs to be explicitely specified, look into lubridate vignette
-
-
-
-
 
 
     

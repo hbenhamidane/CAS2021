@@ -1,5 +1,5 @@
 # WISE Switzerland data analysis script
-# Version: {0.2}
+# Version: {0.3}
 # Author: {Hisham Ben Hamidane}
 # Changes:
 # 1. Addition of script metadata and version
@@ -8,6 +8,7 @@
 # 4. Coercing "below_LOQ" variable to logical (previously character) and grouping variables (AT_name, AT_code, WB_type, site_name, etc...) to factors
 # 5. Addition of preprocessing for k-means
 # 6. Elbow plot for cluster number estimation according to the within sum square method
+# 7. Expansion to 44 dimensions adding the min, max and sd values to the average for each AT and site and performing of K-means
 
 
 # Loading the required packages
@@ -93,39 +94,84 @@ data_f_conservative <- data_f %>% filter(below_LOQ == F)
 
 # 3. Preparing the data for k-means clustering
 ## For a first clustering attempt, values per site and AT will be averaged (removing the time dimension for now)
-## Step 1: calculate the median and average value for each combination of site and AT
+## Step 1: calculate the min, max, median, average and standard deviation value as well as the total count of measurement for each combination of site and AT
 data_f <- data_f %>% group_by(site, AT_code) %>% 
                    mutate(median_measured_value = median(measured_value),
-                          avg_measured_value = mean(measured_value)) %>%
-                   select(site, WB_name, WB_system_name, WB_type, AT_code, avg_measured_value) %>% 
+                          avg_measured_value = mean(measured_value),
+                          sd_measured_value = sd(measured_value),
+                          min_measured_value = min(measured_value),
+                          max_measured_value = max(measured_value),
+                          count_measured_value = n_distinct(measured_value)) %>%
+                   select(site, WB_name, WB_system_name, WB_type, AT_code, min_measured_value, avg_measured_value, max_measured_value, sd_measured_value, count_measured_value) %>% 
                    arrange(site, AT_code)
 ## Remove duplicated entries (each row is still a single measurements but we are only interested in the average measured value per site and AT)
 data_f <- data_f[!duplicated(data_f),]
 ## Further filtering to retain only sites that have a value for all 11 analytical targets
 data_f_recap <- data_f %>% mutate(WB_site =str_c(WB_system_name, site, sep="-")) %>% group_by(WB_site) %>% summarize(num_AT_measured = n()) %>% filter(num_AT_measured == 11)
 data_f <- data_f %>% mutate(WB_site =str_c(WB_system_name, site, sep="-")) %>% filter(WB_site %in% data_f_recap$WB_site)
-## Conversion to a dataframe where each observation is a site and each variable is an AT
-data_f <- data_f %>% select(site, AT_code, avg_measured_value) %>% pivot_wider(id_cols = site, names_from = AT_code, values_from = avg_measured_value)
-## Extracting site column to use as row name
-data_f.index <- data_f$site
-data_f <- data_f[-1]
-row.names(data_f) <- data_f.index
-## Scaling (normalizing the data and converting to a matrix)
-data_f.scaled <- scale(data_f)
+
+## Approach 1: Conversion to a dataframe where each observation is a site and each variable is an AT retaining only the average measured value per site
+### Data dimension: 11 dim, 1 for each AT measured, returning the average measured value
+data_f_wide_1 <- data_f %>% select(site, AT_code, avg_measured_value) %>% pivot_wider(id_cols = site, names_from = AT_code, values_from = avg_measured_value)
+### Passing the site code as row name and removing the site column to retain only a numerical matrix
+data_f_wide_1_rownames <- as.character(data_f_wide_1$site)
+data_f_wide_1 <- data_f_wide_1[-1]
+rownames(data_f_wide_1) <- data_f_wide_1_rownames
+
+## Approach 2: Conversion to a dataframe where each observation is either the min, avg, max or sd of a specific AT measured at a given  site
+### Data dimension: Expanding from 11 dimensions from approach 1 to 44 dimensions (4 per AT: min, avg, max and sd) 
+### Converting to a long dataframe to have all the computed values (avg, min, max, sd) in 2 columns, 1 for the values the other for the key 
+data_f_long_2 <- data_f %>% select(site, AT_code, min_measured_value, avg_measured_value, max_measured_value, sd_measured_value) %>%
+  pivot_longer(cols = c(min_measured_value, avg_measured_value, max_measured_value, sd_measured_value), values_to = "value", names_to = "type")
+### Converting back to a wide dataframe, combining the AT code and the type (which of the aggregated measured value: min, avg, max and sd) to have a unique observation per case
+data_f_wide_2 <- data_f_long_2 %>% pivot_wider(id_cols = site, names_from = c(AT_code, type), names_sep = "-")
+### Passing the site code as row name and removing the site column to retain only a numerical matrix
+data_f_wide_2_rownames <- as.character(data_f_wide_2$site)
+data_f_wide_2 <- data_f_wide_2[-1]
+rownames(data_f_wide_2) <- data_f_wide_2_rownames
+
+## Scaling (normalizing the data and converting to a matrix) for both approaches
+data_f_scaled_1 <- scale(data_f_wide_1)
+data_f_scaled_2 <- scale(data_f_wide_2)
+
 ## Creating the distance matrix
-data_f.dist <- dist(data_f)
+data_f_dist_1 <- dist(data_f_scaled_1)
+data_f_dist_2 <- dist(data_f_scaled_2)
+
 ## Determining the number of clusters using an elbow plot
 ### synthax from factoextra
-fviz_nbclust(data_f, kmeans, method = "wss")
+fviz_nbclust(data_f_scaled_1, kmeans, method = "wss")
+fviz_nbclust(data_f_scaled_2, kmeans, method = "wss")
+
+
+####### Work in progress
+# 4.Performing kmeans clustering using k=3 and nstart=100
+km_out_1 <- kmeans(data_f_scaled_1, centers=3, nstart=100)
+print(km_out_1)
+km_out_2 <- kmeans(data_f_scaled_2, centers=5, nstart=100)
+print(km_out_2)
+
+
+## Visualizing
+km_clusters_1 <- km_out_1$cluster
+fviz_cluster(list(data=data_f_scaled_1, cluster = km_clusters_1))
+
+km_clusters_2 <- km_out_2$cluster
+fviz_cluster(list(data=data_f_scaled_2, cluster = km_clusters_2))
 
 
 
 
 
+# # # Problems # # #
 ## Overview of the distribution of data between the higher level categories (Water Body system)
 table(data_f$WB_system_name, data_f$WB_type)
 ### uneven distribution of measurements between water bassins; will have to be accounted for when sampling 
-
+#           GW    LW    RW
+# DANUBE   353     0   688
+# PO      1384    26  3202
+# RHINE  16147    48 74313
+# RHONE   2210   477 12009
 
 
 

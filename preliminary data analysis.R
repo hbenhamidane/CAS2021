@@ -13,6 +13,7 @@
 # 9. Reworked the overall Kmeans workflow distinguishing 4 approaches and renaming variables according to improve readability
 # 10. Addition of new approach, retaining all the data, pivoting to a wider dataframe after grouping according to the time variable. 
 # 11. Use of near zero variance filter (caret) to drop the variables with zero or near zero variance
+# 12. Rework of non zero variance filter in the main script (rows 252 to 282) for option 1; to be used as template for options 2 to 4 and possibly write up a function
 
 
 # Loading the required packages
@@ -24,6 +25,7 @@ library(ggplot2)
 library(stats)
 library(caret)
 library(factoextra)
+library(caret)
 
 # 0. Parameters for the analysis
 
@@ -35,7 +37,10 @@ curated_ATs <- c("EEA_3152-01-0", "EEA_3142-01-6", "CAS_16887-00-6", "CAS_14797-
 # 1. Loading the data and metadata, merging the 2 together and manipulating variables (selecting/renaming column names, adding new columns)
 
 ## EU dataset for water quality; filtered available database for Switzerland entries (country code = CH)
+### path 1 (hbh private cpu)
 setwd("C:/Users/shami/Documents/CAS 2021/")
+### path 1 (hbh professional cpu)
+setwd("C:/Users/hisham.benhamidane/OneDrive - Thermo Fisher Scientific/Documents/R/projects/CAS2021")
 wd <- getwd()
 ##Reading the data and metadata
 data <- read.csv("DataExtract_Switzerland.csv", header = T)
@@ -80,10 +85,11 @@ data$semester <- as.factor(if_else(data$meas_month %in% c("1", "2", "3", "10", "
 site_num <- str_extract(data$site, pattern = "[[:digit:]]{2,4}[[:alpha:]]*$")
 # Creating unique and compact obs_id identifyers for rows
 data$obs_id <- str_c(str_extract(data$WB_type, pattern = "^[[:alpha:]]{1}"), site_num, sep="-")
-data$obs_id_S <- str_c(data$semester, str_extract(data$WB_type, pattern = "^[[:alpha:]]{1}"), site_num, sep="-")  
+# Adding semester information to the unique identifyer
+# data$obs_id_S <- str_c(data$semester, str_extract(data$WB_type, pattern = "^[[:alpha:]]{1}"), site_num, sep="-")  
 rm(site_num)
 
-# 2. Creating data overview and selecting observations to keep
+ # 2. Creating data overview and selecting observations to keep
 
 ## Graphical representation of dataframe after edits in 1 using Visdat
 # vis_dat(data, warn_large_data = F)
@@ -247,23 +253,28 @@ fviz_cluster(list(data=data_4_scaled, cluster = km_clusters_4))
 
 # 1st test of a different data structure: first averaging the measured_value for each site, date and AT to account for the multiple measured_value per day case (measured value will be reported for each measurement date)
 # removing redundant entries with distinct(), and pivoting into a wider df where each AT is a variable and coercing to 0 the missing values (!!! INPUTATION !!!)
-test <- data  %>% select(site, meas_date, AT_code, measured_value) %>% group_by(site, meas_date, AT_code) %>%
+test <- data  %>% select(obs_id, meas_date, AT_code, measured_value) %>% group_by(obs_id, meas_date, AT_code) %>%
   mutate(measured_value = mean(measured_value)) %>% ungroup() %>% distinct() %>% mutate(measured_value = replace_na(data = measured_value, 0)) %>% 
-  pivot_wider(id_cols = c(site, meas_date), names_from = AT_code, values_from = measured_value, values_fill = 0)
+  pivot_wider(id_cols = c(obs_id, meas_date), names_from = AT_code, values_from = measured_value, values_fill = 0)
+
 # checking the test df structure and content
 vis_dat(test, warn_large_data = F)
 # creating a unique row index and passing it as rownames
-test_index <- str_c(test$site, test$meas_date, sep = "-")
-row.names(test) <- test_index
-test <- test %>% select(-site, -meas_date)
+test_index <- str_c(test$obs_id, test$meas_date, sep = "-")
+test <- test %>% select(-obs_id, -meas_date)
+# Filtering variables based on near zero variance
+# test_nzv_summary <- nearZeroVar(test_scaled, saveMetrics = T)
+test_nzv_subsetter <- nearZeroVar(test, saveMetrics = F)
+test_nzv <- test %>% select(-all_of(test_nzv_subsetter))
 ## Scaling (normalizing the data and converting to a matrix)
 test_scaled <- scale(test)
+# Adding a unique row identifier
+rownames(test_scaled) <- test_index
 ## Creating the distance matrix (not sure why this step is needed --> investigate)
-test_dist <- dist(test_scaled)
+# test_dist <- dist(test_scaled)
 ## Determining the number of clusters using an elbow plot
 ### synthax from factoextra
 fviz_nbclust(test_scaled, kmeans, method = "wss")
-# 4.Performing kmeans clustering using k=2 and nstart=100
 km_out <- kmeans(test_scaled, centers=4, nstart=100)
 print(km_out)
 ## Visualizing
@@ -273,6 +284,7 @@ fviz_cluster(list(data=test_scaled, cluster = km_clusters))
 #__________________________________________________________________________________________________________________________________________________________________
 
 # 2nd test of a different data structure: first averaging the measured_value for each site and AT ONLY (measured_value will be data averaged) 
+# 4.Performing kmeans clustering using k=2 and nstart=100
 # removing redundant entries with distinct(), and pivoting into a wider df where each AT is a variable and coercing to 0 the missing values (!!! INPUTATION !!!)
 test2 <- data  %>% group_by(site, AT_code) %>% mutate(avg_measured_value = mean(measured_value)) %>%  ungroup() %>%   
   select(obs_id, AT_code, avg_measured_value) %>% 
@@ -367,7 +379,8 @@ print(km_out)
 km_clusters <- km_out$cluster
 fviz_cluster(list(data=test2_scaled, cluster = km_clusters))
 
-library(caret)
+# Implementation of near zero variance criteria to filter out variables (columns)
+
 test2_nzv_summary <- nearZeroVar(test2_scaled,saveMetrics = T)
 test2_nzv_subsetter <- nearZeroVar(test2_scaled,saveMetrics = F)
 
@@ -376,6 +389,7 @@ rownames(test2_nzv) <- test2_index
 test2_nzv <- scale(test2_nzv)
 
 fviz_nbclust(test2_nzv, kmeans, method = "wss")
+fviz_nbclust(test2_nzv, kmeans, method = "silhouette")
 km_out <- kmeans(test2_nzv, centers=2, nstart=100)
 print(km_out)
 ## Visualizing

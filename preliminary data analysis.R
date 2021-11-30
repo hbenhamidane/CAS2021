@@ -1,5 +1,5 @@
 # WISE Switzerland data analysis script
-# Version: {0.6}
+# Version: {0.7}
 # Author: {Hisham Ben Hamidane}
 # Changes:
 # 1. Addition of script metadata and version
@@ -14,6 +14,7 @@
 # 10. Addition of new approach, retaining all the data, pivoting to a wider dataframe after grouping according to the time variable. 
 # 11. Use of near zero variance filter (caret) to drop the variables with zero or near zero variance
 # 12. Rework of non zero variance filter in the main script (rows 252 to 282) for option 1; to be used as template for options 2 to 4 and possibly write up a function
+# 13. Restructuring of code and renaming of data frames pertaining to the different data grouping approaches
 
 
 # Loading the required packages
@@ -27,20 +28,22 @@ library(caret)
 library(factoextra)
 library(caret)
 
-# 0. Parameters for the analysis
 
+
+# 0. Parameters for the analysis
 ##Defining variables for dataselection
 # meas_count_threshold <- 5000
 # Selected analytical targets 
 curated_ATs <- c("EEA_3152-01-0", "EEA_3142-01-6", "CAS_16887-00-6", "CAS_14797-55-8")
 
-# 1. Loading the data and metadata, merging the 2 together and manipulating variables (selecting/renaming column names, adding new columns)
 
+
+# 1. Loading the data and metadata, merging the 2 together and manipulating variables (selecting/renaming column names, adding new columns)
 ## EU dataset for water quality; filtered available database for Switzerland entries (country code = CH)
 ### path 1 (hbh private cpu)
 setwd("C:/Users/shami/Documents/CAS 2021/")
 ### path 1 (hbh professional cpu)
-setwd("C:/Users/hisham.benhamidane/OneDrive - Thermo Fisher Scientific/Documents/R/projects/CAS2021")
+# setwd("C:/Users/hisham.benhamidane/OneDrive - Thermo Fisher Scientific/Documents/R/projects/CAS2021")
 wd <- getwd()
 ##Reading the data and metadata
 data <- read.csv("DataExtract_Switzerland.csv", header = T)
@@ -85,12 +88,16 @@ data$semester <- as.factor(if_else(data$meas_month %in% c("1", "2", "3", "10", "
 site_num <- str_extract(data$site, pattern = "[[:digit:]]{2,4}[[:alpha:]]*$")
 # Creating unique and compact obs_id identifyers for rows
 data$obs_id <- str_c(str_extract(data$WB_type, pattern = "^[[:alpha:]]{1}"), site_num, sep="-")
-# Adding semester information to the unique identifyer
-# data$obs_id_S <- str_c(data$semester, str_extract(data$WB_type, pattern = "^[[:alpha:]]{1}"), site_num, sep="-")  
+# Adding semester information to the unique obs_id identifyer
+data$obs_id_S <- str_c(data$semester, str_extract(data$WB_type, pattern = "^[[:alpha:]]{1}"), site_num, sep="-")  
+# Adding month information to the unique obs_id identifyer
+data$obs_id_M <- str_c(data$meas_month, str_extract(data$WB_type, pattern = "^[[:alpha:]]{1}"), site_num, sep="-")
 rm(site_num)
 
- # 2. Creating data overview and selecting observations to keep
 
+
+
+# 2. Creating data overview, assessing data completeness and missing values 
 ## Graphical representation of dataframe after edits in 1 using Visdat
 # vis_dat(data, warn_large_data = F)
 ## Percentage of missing values (total)
@@ -118,13 +125,129 @@ data_completeness <- data %>% select(AT_name, AT_code) %>% filter(!duplicated(AT
                               arrange(desc(total_values), number_of_sites, desc(avg_meas_per_site), not_measured_perc, missing_perc)
 #Filtering data to remove missing values
 data_f <- data %>% filter(!is.na(measured_value))
-# Creating a conservative data frame where AT values below LOQ are dropped
-data_f_conservative <- data_f %>% filter(below_LOQ == F)
-# Creating a copy of data_f before modification to serve as reference.
-data_f_backup <- data_f
 
-# 3. Preparing the data for k-means clustering
 
+
+# 3. Preparing the data for k-means clustering based on the different grouping conditions we wish to use in the analysis:
+## Approach 1: 1 measurement per site (all measurements for a given site ID will be averaged); missing values will be 0 filled
+data_a1 <- data  %>% group_by(obs_id, AT_code) %>% mutate(avg_measured_value = mean(measured_value)) %>%  ungroup() %>%   
+  select(obs_id, AT_code, avg_measured_value) %>% 
+  distinct() %>%
+  mutate(avg_measured_value = replace_na(data = avg_measured_value, 0)) %>% 
+  pivot_wider(id_cols = obs_id, names_from = AT_code, values_from = avg_measured_value, values_fill = 0)
+### checking the test df structure and content
+vis_dat(data_a1)
+### creating a unique row index and passing it as rownames and retaining only value columns (to retain a num matrix)
+data_a1_index <- data_a1$obs_id
+data_a1 <- data_a1 %>% select(-obs_id)
+### Filtering and removing variables based on near zero variance
+data_a1_nzv_subsetter <- nearZeroVar(data_a1, saveMetrics = F)
+data_a1 <- data_a1 %>% select(-all_of(data_a1_nzv_subsetter))
+### Scaling (normalizing the data and converting to a matrix)
+data_a1 <- scale(data_a1)
+### Adding a unique row identifier
+row.names(data_a1) <- data_a1_index
+
+## Approach 2: 1 measurement per site AND per semester (to account for the seasonal variability but still limit the PCA projection space); missing values will be 0 filled
+data_a2 <- data  %>% group_by(obs_id_S, AT_code) %>% mutate(avg_measured_value = mean(measured_value)) %>%  ungroup() %>%   
+  select(obs_id_S, AT_code, avg_measured_value) %>% 
+  distinct() %>%
+  mutate(avg_measured_value = replace_na(data = avg_measured_value, 0)) %>% 
+  pivot_wider(id_cols = obs_id_S, names_from = AT_code, values_from = avg_measured_value, values_fill = 0)
+### checking the test df structure and content
+vis_dat(data_a2)
+### creating a unique row index and passing it as rownames and retaining only value columns (to retain a num matrix)
+data_a2_index <- data_a2$obs_id_S
+data_a2 <- data_a2 %>% select(-obs_id_S)
+### Filtering and removing variables based on near zero variance
+data_a2_nzv_subsetter <- nearZeroVar(data_a2, saveMetrics = F)
+data_a2 <- data_a2 %>% select(-all_of(data_a2_nzv_subsetter))
+### Scaling (normalizing the data and converting to a matrix)
+data_a2 <- scale(data_a2)
+### Adding a unique row identifier
+row.names(data_a2) <- data_a2_index
+
+## Approach 3: 1 measurement per site AND month (to provide the maximum meaningful time resolution per site, might resulte in crowded PCA projection space); missing values will be 0 filled
+data_a3 <- data  %>% group_by(obs_id_M, AT_code) %>% mutate(avg_measured_value = mean(measured_value)) %>%  ungroup() %>%   
+  select(obs_id_M, AT_code, avg_measured_value) %>% 
+  distinct() %>%
+  mutate(avg_measured_value = replace_na(data = avg_measured_value, 0)) %>% 
+  pivot_wider(id_cols = obs_id_M, names_from = AT_code, values_from = avg_measured_value, values_fill = 0)
+### checking the test df structure and content
+vis_dat(data_a3)
+### creating a unique row index and passing it as rownames and retaining only value columns (to retain a num matrix)
+data_a3_index <- data_a3$obs_id_M
+data_a3 <- data_a3 %>% select(-obs_id_M)
+### Filtering and removing variables based on near zero variance
+data_a3_nzv_subsetter <- nearZeroVar(data_a3, saveMetrics = F)
+data_a3 <- data_a3 %>% select(-all_of(data_a3_nzv_subsetter))
+### Scaling (normalizing the data and converting to a matrix)
+data_a3 <- scale(data_a3)
+### Adding a unique row identifier
+row.names(data_a3) <- data_a3_index
+
+
+
+# 4. Performing K-means clustering (unsupervised learning approach)
+## Step 1: determining the optimal number of clusters using elbow/silhouette plots
+### Approach 1: site average
+fviz_nbclust(data_a1, kmeans, method = "wss")
+### Approach 2: site and semester average
+fviz_nbclust(data_a2, kmeans, method = "wss")
+### Approach 3: site and month average
+fviz_nbclust(data_a3, kmeans, method = "wss")
+
+## Step 2: Running the kmeans clustering algorithm based on the optimal number of clusters determined in 4./Step 1. and 100 random cluster center position starts
+### Approach 1: site average; optimal number of clusters k = 2
+km_out_a1 <- kmeans(data_a1, centers=2, nstart=100)
+km_clust_a1 <- km_out_a1$cluster
+### Approach 2: site average; optimal number of clusters k = 2
+km_out_a2 <- kmeans(data_a2, centers=2, nstart=100)
+km_clust_a2 <- km_out_a2$cluster
+### Approach 3: site average; optimal number of clusters k = 4
+km_out_a3 <- kmeans(data_a3, centers=4, nstart=100)
+km_clust_a3 <- km_out_a3$cluster
+
+## Step 3: Creating a visualization to evaluate the clustering along the first 2 PCA dimensions
+### Approach 1: site average; optimal number of clusters k =
+fviz_cluster(list(data=data_a1, cluster = km_clust_a1))
+### Approach 1: site average; optimal number of clusters k =
+fviz_cluster(list(data=data_a2, cluster = km_clust_a2))
+### Approach 1: site average; optimal number of clusters k =
+fviz_cluster(list(data=data_a3, cluster = km_clust_a3))
+
+
+
+#______________________________________________________________________________________________________________________________________________________________________________________________________________________
+#______________________________________________________________________________________________________________________________________________________________________________________________________________________
+#______________________________________________________________________________________________________________________________________________________________________________________________________________________
+
+# Next steps: 
+
+# 0 investigate the parameters of near zero variance filter and try to tweak it
+
+# 1 supervised learning using water body type (RW, GW or LW) as cluster values for each of the 3 approaches
+## step 1: split the dataset between train and test keeping in mind the biais between the groups
+## step 2: train the model
+
+# 2 investigate the possibility of using neural networks for the supervised learning
+
+
+
+
+
+# # # Problems # # #
+## Overview of the distribution of data between the higher level categories (Water Body system)
+table(data_f$WB_system_name, data_f$WB_type)
+### uneven distribution of measurements between water bassins; will have to be accounted for when sampling 
+#           GW    LW    RW
+# DANUBE   353     0   688
+# PO      1384    26  3202
+# RHINE  16147    48 74313
+# RHONE   2210   477 12009
+
+
+# 5. Creating aggregated statistical values beyond the mean for the different grouping conditions
 ## For a first clustering attempt, values per site and AT will be averaged (removing the time dimension for now)
 ## Step 1: calculate the min, max, median, average and standard deviation value as well as the total count of measurement for each combination of site and AT
 data_f <- data_f %>% group_by(AT_code, obs_id) %>% 
@@ -248,153 +371,6 @@ print(km_out_4)
 km_clusters_4 <- km_out_4$cluster
 fviz_cluster(list(data=data_4_scaled, cluster = km_clusters_4))
 
-#_________________________________________________________________________________________________________________________________
-#_________________________________________________________________________________________________________________________________
-
-# 1st test of a different data structure: first averaging the measured_value for each site, date and AT to account for the multiple measured_value per day case (measured value will be reported for each measurement date)
-# removing redundant entries with distinct(), and pivoting into a wider df where each AT is a variable and coercing to 0 the missing values (!!! INPUTATION !!!)
-test <- data  %>% select(obs_id, meas_date, AT_code, measured_value) %>% group_by(obs_id, meas_date, AT_code) %>%
-  mutate(measured_value = mean(measured_value)) %>% ungroup() %>% distinct() %>% mutate(measured_value = replace_na(data = measured_value, 0)) %>% 
-  pivot_wider(id_cols = c(obs_id, meas_date), names_from = AT_code, values_from = measured_value, values_fill = 0)
-
-# checking the test df structure and content
-vis_dat(test, warn_large_data = F)
-# creating a unique row index and passing it as rownames
-test_index <- str_c(test$obs_id, test$meas_date, sep = "-")
-test <- test %>% select(-obs_id, -meas_date)
-# Filtering variables based on near zero variance
-# test_nzv_summary <- nearZeroVar(test_scaled, saveMetrics = T)
-test_nzv_subsetter <- nearZeroVar(test, saveMetrics = F)
-test_nzv <- test %>% select(-all_of(test_nzv_subsetter))
-## Scaling (normalizing the data and converting to a matrix)
-test_scaled <- scale(test)
-# Adding a unique row identifier
-rownames(test_scaled) <- test_index
-## Creating the distance matrix (not sure why this step is needed --> investigate)
-# test_dist <- dist(test_scaled)
-## Determining the number of clusters using an elbow plot
-### synthax from factoextra
-fviz_nbclust(test_scaled, kmeans, method = "wss")
-km_out <- kmeans(test_scaled, centers=4, nstart=100)
-print(km_out)
-## Visualizing
-km_clusters <- km_out$cluster
-fviz_cluster(list(data=test_scaled, cluster = km_clusters))
-
-#__________________________________________________________________________________________________________________________________________________________________
-
-# 2nd test of a different data structure: first averaging the measured_value for each site and AT ONLY (measured_value will be data averaged) 
-# 4.Performing kmeans clustering using k=2 and nstart=100
-# removing redundant entries with distinct(), and pivoting into a wider df where each AT is a variable and coercing to 0 the missing values (!!! INPUTATION !!!)
-test2 <- data  %>% group_by(site, AT_code) %>% mutate(avg_measured_value = mean(measured_value)) %>%  ungroup() %>%   
-  select(obs_id, AT_code, avg_measured_value) %>% 
-  distinct() %>%
-  mutate(avg_measured_value = replace_na(data = avg_measured_value, 0)) %>% 
-  pivot_wider(id_cols = obs_id, names_from = AT_code, values_from = avg_measured_value, values_fill = 0)
-
-# checking the test df structure and content
-vis_dat(test2)
-# creating a unique row index and passing it as rownames
-test2_index <- test2$obs_id
-test2 <- test2 %>% select(-obs_id)
-row.names(test2) <- test2_index
-
-## Scaling (normalizing the data and converting to a matrix)
-test2_scaled <- scale(test2)
-## Creating the distance matrix (not sure why this step is needed --> investigate)
-test2_dist <- dist(test2_scaled)
-## Determining the number of clusters using an elbow plot
-### synthax from factoextra
-fviz_nbclust(test2_scaled, kmeans, method = "wss")
-fviz_nbclust(test2_scaled, kmeans, method = "silhouette")
-# 4.Performing kmeans clustering using k=2 and nstart=100
-km_out <- kmeans(test2_scaled, centers=3, nstart=100)
-print(km_out)
-## Visualizing
-km_clusters <- km_out$cluster
-fviz_cluster(list(data=test2_scaled, cluster = km_clusters))
-
-
-#__________________________________________________________________________________________________________________________________________________________________
-
-
-# 3rd test of a different data structure: first averaging the measured_value for each site, AT and semester (measured_value will be data averaged) 
-# removing redundant entries with distinct(), and pivoting into a wider df where each AT is a variable and coercing to 0 the missing values (!!! INPUTATION !!!)
-test3 <- data  %>% group_by(obs_id_S, AT_code) %>% mutate(avg_measured_value = mean(measured_value)) %>%  ungroup() %>%   
-  select(obs_id_S, AT_code, avg_measured_value) %>% 
-  distinct() %>%
-  mutate(avg_measured_value = replace_na(data = avg_measured_value, 0)) %>% 
-  pivot_wider(id_cols = obs_id_S, names_from = AT_code, values_from = avg_measured_value, values_fill = 0)
-
-# checking the test df structure and content
-vis_dat(test3)
-# creating a unique row index and passing it as rownames
-test3_index <- test3$obs_id_S
-test3 <- test3 %>% select(-obs_id_S)
-row.names(test3) <- test3_index
-
-## Scaling (normalizing the data and converting to a matrix)
-test3_scaled <- scale(test3)
-## Creating the distance matrix (not sure why this step is needed --> investigate)
-test3_dist <- dist(test3_scaled)
-## Determining the number of clusters using an elbow plot
-### synthax from factoextra
-fviz_nbclust(test3_scaled, kmeans, method = "wss")
-fviz_nbclust(test3_scaled, kmeans, method = "silhouette")
-# 4.Performing kmeans clustering using k=2 and nstart=100
-km_out <- kmeans(test3_scaled, centers=4, nstart=100)
-print(km_out)
-## Visualizing
-km_clusters <- km_out$cluster
-fviz_cluster(list(data=test3_scaled, cluster = km_clusters))
-
-#__________________________________________________________________________________________________________________________________________________________________
-# 4th test of a different data structure: first averaging the measured_value for each site, year
-# removing redundant entries with distinct(), and pivoting into a wider df where each AT is a variable and coercing to 0 the missing values (!!! INPUTATION !!!)
-test4 <- data  %>% group_by(site, meas_year, AT_code) %>% mutate(avg_measured_value = mean(measured_value)) %>%  ungroup() %>%   
-  select(obs_id, AT_code, avg_measured_value) %>% 
-  distinct() %>%
-  mutate(avg_measured_value = replace_na(data = avg_measured_value, 0)) %>% 
-  pivot_wider(id_cols = str_c(obs_id, meas_year, sep="-"), names_from = AT_code, values_from = avg_measured_value, values_fill = 0)
-
-# checking the test df structure and content
-vis_dat(test2)
-# creating a unique row index and passing it as rownames
-test2_index <- test2$obs_id
-test2 <- test2 %>% select(-obs_id)
-row.names(test2) <- test2_index
-
-## Scaling (normalizing the data and converting to a matrix)
-test2_scaled <- scale(test2)
-## Creating the distance matrix (not sure why this step is needed --> investigate)
-test2_dist <- dist(test2_scaled)
-## Determining the number of clusters using an elbow plot
-### synthax from factoextra
-fviz_nbclust(test2_scaled, kmeans, method = "wss")
-fviz_nbclust(test2_scaled, kmeans, method = "silhouette")
-# 4.Performing kmeans clustering using k=2 and nstart=100
-km_out <- kmeans(test2_scaled, centers=3, nstart=100)
-print(km_out)
-## Visualizing
-km_clusters <- km_out$cluster
-fviz_cluster(list(data=test2_scaled, cluster = km_clusters))
-
-# Implementation of near zero variance criteria to filter out variables (columns)
-
-test2_nzv_summary <- nearZeroVar(test2_scaled,saveMetrics = T)
-test2_nzv_subsetter <- nearZeroVar(test2_scaled,saveMetrics = F)
-
-test2_nzv <- test2 %>% select(-all_of(test2_nzv_subsetter))
-rownames(test2_nzv) <- test2_index
-test2_nzv <- scale(test2_nzv)
-
-fviz_nbclust(test2_nzv, kmeans, method = "wss")
-fviz_nbclust(test2_nzv, kmeans, method = "silhouette")
-km_out <- kmeans(test2_nzv, centers=2, nstart=100)
-print(km_out)
-## Visualizing
-km_clusters <- km_out$cluster
-fviz_cluster(list(data=test2_nzv, cluster = km_clusters))
 
 #_________________________________________________________________________________________________________________________________
 #_________________________________________________________________________________________________________________________________
@@ -403,15 +379,6 @@ fviz_cluster(list(data=test2_nzv, cluster = km_clusters))
 
 
 
-# # # Problems # # #
-## Overview of the distribution of data between the higher level categories (Water Body system)
-table(data_f$WB_system_name, data_f$WB_type)
-### uneven distribution of measurements between water bassins; will have to be accounted for when sampling 
-#           GW    LW    RW
-# DANUBE   353     0   688
-# PO      1384    26  3202
-# RHINE  16147    48 74313
-# RHONE   2210   477 12009
 
 
 

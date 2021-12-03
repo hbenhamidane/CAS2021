@@ -27,7 +27,7 @@ library(stats)
 library(caret)
 library(factoextra)
 library(caret)
-
+library(mclust)
 
 
 # 0. Parameters for the analysis
@@ -41,9 +41,9 @@ curated_ATs <- c("EEA_3152-01-0", "EEA_3142-01-6", "CAS_16887-00-6", "CAS_14797-
 # 1. Loading the data and metadata, merging the 2 together and manipulating variables (selecting/renaming column names, adding new columns)
 ## EU dataset for water quality; filtered available database for Switzerland entries (country code = CH)
 ### path 1 (hbh private cpu)
-setwd("C:/Users/shami/Documents/CAS 2021/")
+# setwd("C:/Users/shami/Documents/CAS 2021/")
 ### path 1 (hbh professional cpu)
-# setwd("C:/Users/hisham.benhamidane/OneDrive - Thermo Fisher Scientific/Documents/R/projects/CAS2021")
+setwd("C:/Users/hisham.benhamidane/OneDrive - Thermo Fisher Scientific/Documents/R/projects/CAS2021")
 wd <- getwd()
 ##Reading the data and metadata
 data <- read.csv("DataExtract_Switzerland.csv", header = T)
@@ -141,7 +141,7 @@ vis_dat(data_a1)
 data_a1_index <- data_a1$obs_id
 data_a1 <- data_a1 %>% select(-obs_id)
 ### Filtering and removing variables based on near zero variance
-data_a1_nzv_subsetter <- nearZeroVar(data_a1, saveMetrics = F)
+data_a1_nzv_subsetter <- nearZeroVar(data_a1, freqCut = 80/20, uniqueCut = 99 ,saveMetrics = F)
 data_a1 <- data_a1 %>% select(-all_of(data_a1_nzv_subsetter))
 ### Scaling (normalizing the data and converting to a matrix)
 data_a1 <- scale(data_a1)
@@ -167,7 +167,7 @@ data_a2 <- scale(data_a2)
 ### Adding a unique row identifier
 row.names(data_a2) <- data_a2_index
 
-## Approach 3: 1 measurement per site AND month (to provide the maximum meaningful time resolution per site, might resulte in crowded PCA projection space); missing values will be 0 filled
+## Approach 3: 1 measurement per site AND per month (to provide the maximum meaningful time resolution per site, might resulte in crowded PCA projection space); missing values will be 0 filled
 data_a3 <- data  %>% group_by(obs_id_M, AT_code) %>% mutate(avg_measured_value = mean(measured_value)) %>%  ungroup() %>%   
   select(obs_id_M, AT_code, avg_measured_value) %>% 
   distinct() %>%
@@ -191,21 +191,21 @@ row.names(data_a3) <- data_a3_index
 # 4. Performing K-means clustering (unsupervised learning approach)
 ## Step 1: determining the optimal number of clusters using elbow/silhouette plots
 ### Approach 1: site average
-fviz_nbclust(data_a1, kmeans, method = "wss")
+fviz_nbclust(data_a1, kmeans, method = "silhouette")
 ### Approach 2: site and semester average
-fviz_nbclust(data_a2, kmeans, method = "wss")
+fviz_nbclust(data_a2, kmeans, method = "silhouette")
 ### Approach 3: site and month average
-fviz_nbclust(data_a3, kmeans, method = "wss")
+fviz_nbclust(data_a3, kmeans, method = "silhouette")
 
 ## Step 2: Running the kmeans clustering algorithm based on the optimal number of clusters determined in 4./Step 1. and 100 random cluster center position starts
 ### Approach 1: site average; optimal number of clusters k = 2
 km_out_a1 <- kmeans(data_a1, centers=2, nstart=100)
 km_clust_a1 <- km_out_a1$cluster
-### Approach 2: site average; optimal number of clusters k = 2
-km_out_a2 <- kmeans(data_a2, centers=2, nstart=100)
+### Approach 2: site average; optimal number of clusters k = 2 or 4
+km_out_a2 <- kmeans(data_a2, centers=4, nstart=100)
 km_clust_a2 <- km_out_a2$cluster
-### Approach 3: site average; optimal number of clusters k = 4
-km_out_a3 <- kmeans(data_a3, centers=4, nstart=100)
+### Approach 3: site average; optimal number of clusters k = 2
+km_out_a3 <- kmeans(data_a3, centers=2, nstart=100)
 km_clust_a3 <- km_out_a3$cluster
 
 ## Step 3: Creating a visualization to evaluate the clustering along the first 2 PCA dimensions
@@ -215,6 +215,27 @@ fviz_cluster(list(data=data_a1, cluster = km_clust_a1))
 fviz_cluster(list(data=data_a2, cluster = km_clust_a2))
 ### Approach 1: site average; optimal number of clusters k =
 fviz_cluster(list(data=data_a3, cluster = km_clust_a3))
+
+#_______________________________________
+#Further clustering analysis
+# Performing the PCA
+data_a1_pca <- prcomp(data_a1, center = T, scale. = T)
+# Visualizing the object with package factoextra
+## variance by eigenvector
+fviz_eig(X = data_a1_pca)
+## PCA biplot (PC1, PC2) colored by water body type with AT vectors expressing variance projected in PCA referential 
+cat_test <- as.factor(str_extract(string = rownames(data_a1_pca$x), pattern = "^[:alpha:]{1}"))
+fviz_pca_biplot(data_a1_pca, axes = c(1,2), repel = T, col.ind = cat_test)
+
+## 1st attempt at model based clustering
+data_a1_mclust <- Mclust(data_a1,G = 1:12)
+fviz_mclust_bic(data_a1_mclust)
+fviz_mclust(data_a1_mclust, "classification", "point")
+## optimal number of clusters found to be 1; further look into BIC required to understand this result
+
+
+### grouping/coloring using the water system name instead of the water body type
+rownames(data_a1_pca$x) %in% unique(data$obs_id)
 
 
 

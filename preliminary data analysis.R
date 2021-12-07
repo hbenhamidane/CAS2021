@@ -27,7 +27,7 @@ library(stats)
 library(caret)
 library(factoextra)
 library(caret)
-library(mclust)
+# library(mclust)
 
 
 # 0. Parameters for the analysis
@@ -41,9 +41,9 @@ curated_ATs <- c("EEA_3152-01-0", "EEA_3142-01-6", "CAS_16887-00-6", "CAS_14797-
 # 1. Loading the data and metadata, merging the 2 together and manipulating variables (selecting/renaming column names, adding new columns)
 ## EU dataset for water quality; filtered available database for Switzerland entries (country code = CH)
 ### path 1 (hbh private cpu)
-# setwd("C:/Users/shami/Documents/CAS 2021/")
+setwd("C:/Users/shami/Documents/CAS 2021/")
 ### path 1 (hbh professional cpu)
-setwd("C:/Users/hisham.benhamidane/OneDrive - Thermo Fisher Scientific/Documents/R/projects/CAS2021")
+# setwd("C:/Users/hisham.benhamidane/OneDrive - Thermo Fisher Scientific/Documents/R/projects/CAS2021")
 wd <- getwd()
 ##Reading the data and metadata
 data <- read.csv("DataExtract_Switzerland.csv", header = T)
@@ -130,10 +130,30 @@ data_f <- data %>% filter(!is.na(measured_value))
 
 # 3. Preparing the data for k-means clustering based on the different grouping conditions we wish to use in the analysis:
 ## Approach 1: 1 measurement per site (all measurements for a given site ID will be averaged); missing values will be 0 filled
+data_a1 <- data  %>% group_by(obs_id, AT_code) %>% mutate(avg_measured_value = mean(measured_value), sd_measured_value = sd(measured_value)) %>%  ungroup() %>%   
+  select(obs_id, AT_code, avg_measured_value, sd_measured_value) %>% 
+  distinct() %>%
+  mutate(avg_measured_value = replace_na(data = avg_measured_value, 0),
+         sd_measured_value = replace_na(data = sd_measured_value, 0)) %>% 
+  pivot_wider(id_cols = obs_id, names_from = AT_code, values_from = c(avg_measured_value, sd_measured_value), values_fill = 0)
+### checking the test df structure and content
+vis_dat(data_a1)
+### creating a unique row index and passing it as rownames and retaining only value columns (to retain a num matrix)
+data_a1_index <- data_a1$obs_id
+data_a1 <- data_a1 %>% select(-obs_id)
+### Filtering and removing variables based on near zero variance
+data_a1_nzv_subsetter <- nearZeroVar(data_a1, freqCut = 80/20, uniqueCut = 33 ,saveMetrics = F)
+data_a1 <- data_a1 %>% select(-all_of(data_a1_nzv_subsetter))
+### Scaling (normalizing the data and converting to a matrix)
+data_a1 <- scale(data_a1)
+### Adding a unique row identifier
+row.names(data_a1) <- data_a1_index
+
+
 data_a1 <- data  %>% group_by(obs_id, AT_code) %>% mutate(avg_measured_value = mean(measured_value)) %>%  ungroup() %>%   
   select(obs_id, AT_code, avg_measured_value) %>% 
   distinct() %>%
-  mutate(avg_measured_value = replace_na(data = avg_measured_value, 0)) %>% 
+  mutate(avg_measured_value = replace_na(data = avg_measured_value, 0))%>% 
   pivot_wider(id_cols = obs_id, names_from = AT_code, values_from = avg_measured_value, values_fill = 0)
 ### checking the test df structure and content
 vis_dat(data_a1)
@@ -141,12 +161,52 @@ vis_dat(data_a1)
 data_a1_index <- data_a1$obs_id
 data_a1 <- data_a1 %>% select(-obs_id)
 ### Filtering and removing variables based on near zero variance
-data_a1_nzv_subsetter <- nearZeroVar(data_a1, freqCut = 80/20, uniqueCut = 99 ,saveMetrics = F)
+data_a1_nzv_subsetter <- nearZeroVar(data_a1, freqCut = 95/5, uniqueCut = 10 ,saveMetrics = F)
 data_a1 <- data_a1 %>% select(-all_of(data_a1_nzv_subsetter))
 ### Scaling (normalizing the data and converting to a matrix)
 data_a1 <- scale(data_a1)
 ### Adding a unique row identifier
 row.names(data_a1) <- data_a1_index
+
+
+data_a1 <- data  %>% group_by(obs_id, AT_code) %>% mutate(avg = mean(measured_value), 
+                                                          sd = sd(measured_value),
+                                                          min = min(measured_value),
+                                                          max = max(measured_value)) %>%  ungroup() %>%   
+  select(obs_id, AT_code, avg, sd, min, max) %>% 
+  distinct() %>%
+  mutate(avg = replace_na(data = avg, 0),
+         sd = replace_na(data = sd, 0),
+         min = replace_na(data = min, 0),
+         max = replace_na(data = sd, 0)) %>% 
+  pivot_wider(id_cols = obs_id, names_from = AT_code, values_from = c(avg, sd, min, max), values_fill = 0)
+### checking the test df structure and content
+vis_dat(data_a1)
+### creating a unique row index and passing it as rownames and retaining only value columns (to retain a num matrix)
+data_a1_index <- data_a1$obs_id
+data_a1 <- data_a1 %>% select(-obs_id)
+### Filtering and removing variables based on near zero variance
+data_a1_nzv_subsetter <- nearZeroVar(data_a1, freqCut = 95/5, uniqueCut = 10 ,saveMetrics = F)
+data_a1 <- data_a1 %>% select(-all_of(data_a1_nzv_subsetter))
+### Scaling (normalizing the data and converting to a matrix)
+data_a1 <- scale(data_a1)
+### Adding a unique row identifier
+row.names(data_a1) <- data_a1_index
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ## Approach 2: 1 measurement per site AND per semester (to account for the seasonal variability but still limit the PCA projection space); missing values will be 0 filled
 data_a2 <- data  %>% group_by(obs_id_S, AT_code) %>% mutate(avg_measured_value = mean(measured_value)) %>%  ungroup() %>%   
@@ -198,8 +258,8 @@ fviz_nbclust(data_a2, kmeans, method = "silhouette")
 fviz_nbclust(data_a3, kmeans, method = "silhouette")
 
 ## Step 2: Running the kmeans clustering algorithm based on the optimal number of clusters determined in 4./Step 1. and 100 random cluster center position starts
-### Approach 1: site average; optimal number of clusters k = 2
-km_out_a1 <- kmeans(data_a1, centers=2, nstart=100)
+### Approach 1: site average; optimal number of clusters k = 3
+km_out_a1 <- kmeans(data_a1, centers=3, nstart=100)
 km_clust_a1 <- km_out_a1$cluster
 ### Approach 2: site average; optimal number of clusters k = 2 or 4
 km_out_a2 <- kmeans(data_a2, centers=4, nstart=100)
@@ -211,7 +271,7 @@ km_clust_a3 <- km_out_a3$cluster
 ## Step 3: Creating a visualization to evaluate the clustering along the first 2 PCA dimensions
 ### Approach 1: site average; optimal number of clusters k =
 fviz_cluster(list(data=data_a1, cluster = km_clust_a1))
-### Approach 1: site average; optimal number of clusters k =
+0### Approach 1: site average; optimal number of clusters k =
 fviz_cluster(list(data=data_a2, cluster = km_clust_a2))
 ### Approach 1: site average; optimal number of clusters k =
 fviz_cluster(list(data=data_a3, cluster = km_clust_a3))
@@ -236,6 +296,52 @@ fviz_mclust(data_a1_mclust, "classification", "point")
 
 ### grouping/coloring using the water system name instead of the water body type
 rownames(data_a1_pca$x) %in% unique(data$obs_id)
+
+
+
+#_________________________________________________________
+# Supervised learning using k nearest neighbours using knn3 from the caret package
+# Defining training and testing data subsets 
+# Clustering attempt on water body
+
+# Data preparation according to the previous steps defined in 3
+data_knn <- data  %>% group_by(obs_id, AT_code) %>% mutate(avg = mean(measured_value), 
+                                                          sd = sd(measured_value),
+                                                          min = min(measured_value),
+                                                          max = max(measured_value)) %>%  ungroup() %>%   
+  select(obs_id, AT_code, avg, sd, min, max) %>% 
+  distinct() %>%
+  mutate(avg = replace_na(data = avg, 0),
+         sd = replace_na(data = sd, 0),
+         min = replace_na(data = min, 0),
+         max = replace_na(data = sd, 0)) %>% 
+  pivot_wider(id_cols = obs_id, names_from = AT_code, values_from = c(avg, sd, min, max), values_fill = 0)
+
+# Default near zero var parameters
+data_knn_nzv_subsetter <- nearZeroVar(data_knn, freqCut = 95/5, uniqueCut = 10 ,saveMetrics = F)
+# Creating a table with the group information: water body type and name
+data_knn_clusterID <- data %>% select(obs_id, WB_system_name, WB_type)
+# applying nZv filter and adding WB identifiers
+data_knn <- data_knn %>% select(-all_of(data_knn_nzv_subsetter)) %>% left_join(data_knn_clusterID, by = "obs_id")
+# scaling the data
+data_knn <- scale(data_knn)
+data_knn_index <- data_knn$obs_id
+data_knn <- data_knn %>% select(-obs_id)
+row.names(data_knn) <- data_knn_index
+# Creating a seed for the random number generator
+set.seed(123)
+# Splitting the data set between train and test with a 80:20 ratio
+size <- floor(0.8*nrow(data_knn))
+sample(x = seq_len(nrow(data)), size = size)
+
+
+
+train <- 
+
+
+
+
+
 
 
 

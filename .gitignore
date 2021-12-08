@@ -2,3 +2,7 @@
 .Rhistory
 .RData
 .Ruserdata
+<<<<<<< HEAD
+=======
+documentation/_build
+>>>>>>> a6d94c920f150e49e4ef6b5d8f8d450cd59fa1cb

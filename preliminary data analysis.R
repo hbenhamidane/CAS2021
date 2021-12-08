@@ -15,6 +15,8 @@
 # 11. Use of near zero variance filter (caret) to drop the variables with zero or near zero variance
 # 12. Rework of non zero variance filter in the main script (rows 252 to 282) for option 1; to be used as template for options 2 to 4 and possibly write up a function
 # 13. Restructuring of code and renaming of data frames pertaining to the different data grouping approaches
+# 14. Addition of standard deviation per AT as an additional dimension
+# 15. Implementation of supervised clustering using k nearest neighbours
 
 
 # Loading the required packages
@@ -28,6 +30,7 @@ library(caret)
 library(factoextra)
 library(caret)
 library(mclust)
+library(gridExtra)
 
 
 # 0. Parameters for the analysis
@@ -130,11 +133,11 @@ data_f <- data %>% filter(!is.na(measured_value))
 
 # 3. Preparing the data for k-means clustering based on the different grouping conditions we wish to use in the analysis:
 ## Approach 1: 1 measurement per site (all measurements for a given site ID will be averaged); missing values will be 0 filled
-data_a1 <- data  %>% group_by(obs_id, AT_code) %>% mutate(avg_measured_value = mean(measured_value)) %>%  ungroup() %>%   
-  select(obs_id, AT_code, avg_measured_value) %>% 
+data_a1 <- data  %>% group_by(obs_id, AT_code) %>% mutate(avg = mean(measured_value), sd = sd(measured_value)) %>%  ungroup() %>%   
+  select(obs_id, AT_code, avg, sd) %>% 
   distinct() %>%
-  mutate(avg_measured_value = replace_na(data = avg_measured_value, 0)) %>% 
-  pivot_wider(id_cols = obs_id, names_from = AT_code, values_from = avg_measured_value, values_fill = 0)
+  mutate(avg = replace_na(data = avg, 0), sd = replace_na(data = sd, 0)) %>% 
+  pivot_wider(id_cols = obs_id, names_from = AT_code, values_from = c(avg, sd), values_fill = 0)
 ### checking the test df structure and content
 vis_dat(data_a1)
 ### creating a unique row index and passing it as rownames and retaining only value columns (to retain a num matrix)
@@ -149,11 +152,11 @@ data_a1 <- scale(data_a1)
 row.names(data_a1) <- data_a1_index
 
 ## Approach 2: 1 measurement per site AND per semester (to account for the seasonal variability but still limit the PCA projection space); missing values will be 0 filled
-data_a2 <- data  %>% group_by(obs_id_S, AT_code) %>% mutate(avg_measured_value = mean(measured_value)) %>%  ungroup() %>%   
-  select(obs_id_S, AT_code, avg_measured_value) %>% 
+data_a2 <- data  %>% group_by(obs_id_S, AT_code) %>% mutate(avg = mean(measured_value), sd = sd(measured_value)) %>%  ungroup() %>%   
+  select(obs_id_S, AT_code, avg, sd) %>% 
   distinct() %>%
-  mutate(avg_measured_value = replace_na(data = avg_measured_value, 0)) %>% 
-  pivot_wider(id_cols = obs_id_S, names_from = AT_code, values_from = avg_measured_value, values_fill = 0)
+  mutate(avg = replace_na(data = avg, 0), sd = replace_na(data = sd, 0)) %>% 
+  pivot_wider(id_cols = obs_id_S, names_from = AT_code, values_from = c(avg, sd), values_fill = 0)
 ### checking the test df structure and content
 vis_dat(data_a2)
 ### creating a unique row index and passing it as rownames and retaining only value columns (to retain a num matrix)
@@ -168,11 +171,11 @@ data_a2 <- scale(data_a2)
 row.names(data_a2) <- data_a2_index
 
 ## Approach 3: 1 measurement per site AND per month (to provide the maximum meaningful time resolution per site, might resulte in crowded PCA projection space); missing values will be 0 filled
-data_a3 <- data  %>% group_by(obs_id_M, AT_code) %>% mutate(avg_measured_value = mean(measured_value)) %>%  ungroup() %>%   
-  select(obs_id_M, AT_code, avg_measured_value) %>% 
+data_a3 <- data  %>% group_by(obs_id_M, AT_code) %>% mutate(avg = mean(measured_value), sd = sd(measured_value)) %>%  ungroup() %>%   
+  select(obs_id_M, AT_code, avg, sd) %>% 
   distinct() %>%
-  mutate(avg_measured_value = replace_na(data = avg_measured_value, 0)) %>% 
-  pivot_wider(id_cols = obs_id_M, names_from = AT_code, values_from = avg_measured_value, values_fill = 0)
+  mutate(avg = replace_na(data = avg, 0), sd = replace_na(data = sd, 0)) %>% 
+  pivot_wider(id_cols = obs_id_M, names_from = AT_code, values_from = c(avg, sd), values_fill = 0)
 ### checking the test df structure and content
 vis_dat(data_a3)
 ### creating a unique row index and passing it as rownames and retaining only value columns (to retain a num matrix)

@@ -17,7 +17,7 @@
 # 13. Restructuring of code and renaming of data frames pertaining to the different data grouping approaches
 # 14. Addition of standard deviation per AT as an additional dimension
 # 15. Implementation of supervised clustering using k nearest neighbours
-
+# 16 Evaluation of differences between 0 and mean inputation
 
 # Loading the required packages
 library(tidyverse)
@@ -132,6 +132,10 @@ data_f <- data %>% filter(!is.na(measured_value))
 
 
 # 3. Preparing the data for k-means clustering based on the different grouping conditions we wish to use in the analysis:
+## parameters for the near zero variance filtering:
+freqCut <- 85/15
+uniqueCut <- 33
+
 ## Approach 1: 1 measurement per site (all measurements for a given site ID will be averaged); missing values will be 0 filled
 data_a1 <- data  %>% group_by(obs_id, AT_code) %>% mutate(avg = mean(measured_value), sd = sd(measured_value)) %>%  ungroup() %>%   
   select(obs_id, AT_code, avg, sd) %>% 
@@ -144,8 +148,9 @@ vis_dat(data_a1)
 data_a1_index <- data_a1$obs_id
 data_a1 <- data_a1 %>% select(-obs_id)
 ### Filtering and removing variables based on near zero variance
-data_a1_nzv_subsetter <- nearZeroVar(data_a1, freqCut = 80/20, uniqueCut = 99 ,saveMetrics = F)
+data_a1_nzv_subsetter <- nearZeroVar(data_a1, freqCut = freqCut, uniqueCut = uniqueCut, saveMetrics = F)
 data_a1 <- data_a1 %>% select(-all_of(data_a1_nzv_subsetter))
+rm(data_a1_nzv_subsetter)
 ### Scaling (normalizing the data and converting to a matrix)
 data_a1 <- scale(data_a1)
 ### Adding a unique row identifier
@@ -163,8 +168,9 @@ vis_dat(data_a2)
 data_a2_index <- data_a2$obs_id_S
 data_a2 <- data_a2 %>% select(-obs_id_S)
 ### Filtering and removing variables based on near zero variance
-data_a2_nzv_subsetter <- nearZeroVar(data_a2, saveMetrics = F)
+data_a2_nzv_subsetter <- nearZeroVar(data_a2, freqCut = freqCut, uniqueCut = uniqueCut, saveMetrics = F)
 data_a2 <- data_a2 %>% select(-all_of(data_a2_nzv_subsetter))
+rm(data_a2_nzv_subsetter)
 ### Scaling (normalizing the data and converting to a matrix)
 data_a2 <- scale(data_a2)
 ### Adding a unique row identifier
@@ -182,8 +188,9 @@ vis_dat(data_a3)
 data_a3_index <- data_a3$obs_id_M
 data_a3 <- data_a3 %>% select(-obs_id_M)
 ### Filtering and removing variables based on near zero variance
-data_a3_nzv_subsetter <- nearZeroVar(data_a3, saveMetrics = F)
+data_a3_nzv_subsetter <- nearZeroVar(data_a3, freqCut = freqCut, uniqueCut = uniqueCut, saveMetrics = F)
 data_a3 <- data_a3 %>% select(-all_of(data_a3_nzv_subsetter))
+rm(data_a3_nzv_subsetter)
 ### Scaling (normalizing the data and converting to a matrix)
 data_a3 <- scale(data_a3)
 ### Adding a unique row identifier
@@ -227,7 +234,9 @@ data_a1_pca <- prcomp(data_a1, center = T, scale. = T)
 ## variance by eigenvector
 fviz_eig(X = data_a1_pca)
 ## PCA biplot (PC1, PC2) colored by water body type with AT vectors expressing variance projected in PCA referential 
-cat_test <- as.factor(str_extract(string = rownames(data_a1_pca$x), pattern = "^[:alpha:]{1}"))
+cat_WB <- as.factor(str_extract(string = rownames(data_a1_pca$x), pattern = "^[:alpha:]{1}"))
+# cat_WS <-
+  
 fviz_pca_biplot(data_a1_pca, axes = c(1,2), repel = T, col.ind = cat_test)
 
 ## 1st attempt at model based clustering
@@ -239,6 +248,106 @@ fviz_mclust(data_a1_mclust, "classification", "point")
 
 ### grouping/coloring using the water system name instead of the water body type
 rownames(data_a1_pca$x) %in% unique(data$obs_id)
+
+# To try: with and without the SD, create a dataframe containing all obs x var and additional columns for the WB type and WB name (this last one will have to be coded numerically?)
+data_knn <- data  %>% group_by(obs_id, AT_code) %>% mutate(avg = mean(measured_value), sd = sd(measured_value)) %>%  ungroup() %>%   
+  select(obs_id, AT_code, avg, sd) %>% 
+  distinct() %>%
+  mutate(avg = replace_na(data = avg, 0), sd = replace_na(data = sd, 0)) %>% 
+  pivot_wider(id_cols = obs_id, names_from = AT_code, values_from = c(avg, sd), values_fill = 0)
+### checking the test df structure and content
+vis_dat(data_knn)
+### Adding the WB type and WB name columns
+data_knn <- data %>% select(obs_id, WB_type, WB_system_name) %>% distinct() %>% right_join(data_knn, by="obs_id")
+
+
+train_subsetter <- createDataPartition(y=data_knn$WB_type, times = 1,  p=0.75, list=F)
+# slice is the function to use in a dplyr pipe to subset according to rows
+
+
+## Creating a train/test data set based on the PC1 from the PCA analysis
+### train
+train_x <- data_a1_pca$x[train_subsetter,]
+train_y <- as.factor(str_extract(string = rownames(data_a1_pca$x)[train_subsetter], pattern = "^[:alpha:]{1}"))
+### test
+test_x <- data_a1_pca$x[-train_subsetter,]
+test_y <- as.factor(str_extract(string = rownames(data_a1_pca$x)[-train_subsetter], pattern = "^[:alpha:]{1}"))
+## train control argument (with cross validation)
+train_control <- trainControl(method="cv", number = 10)
+## number of k neighbors to test for (model optimization)
+## Determining the k parameter (starting point would be sqrt(nrow(data_knn)); k should preferably be an odd number for better decisional power
+k_th <- floor(sqrt(nrow(data_knn)))
+k_lots <- data.frame(k=seq(from=1, to=2*k_th, by=1))
+## setting the random seed
+set.seed(1234)
+## creating and training a first model to evaluate the optimal number of k
+knn_reg_cv_10 <- train(x = train_x,
+                       y = train_y,
+                       method="knn",
+                       tuneGrid = k_lots,
+                       trControl = train_control)
+
+# Optimal number of k determined by the model:
+k_opt <- data.frame(k=knn_reg_cv_10$bestTune$k)
+# Training a model based on the optimal number of k
+knn_reg_cv_10_kopt <- train(x = train_x,
+                       y = train_y,
+                       method="knn",
+                       tuneGrid = k_opt,
+                       trControl = train_control)
+# Predict values from test_x
+test_pred <- predict(object = knn_reg_cv_10_kopt, newdata = test_x)
+model_values <- data.frame(obs=test_y, pred=test_pred)
+defaultSummary(model_values)
+confusionMatrix(test_pred, test_y)
+  
+  
+ggplot(knn_reg_cv_10$results, aes(x=k, y=Accuracy, color = "Red")) + geom_point()
+
+
+
+
+
+
+
+## Creating the training set: X and Y 
+data_knn_train_X <- data_knn %>% select(all_of(starts_with("avg"))) %>% slice(train_subsetter) %>% data.frame()
+# TRy to rework the code to also select sd columns & all_of(starts_with("sd"))
+data_knn_train_Y <- data_knn %>% select(WB_type) %>% slice(train_subsetter) %>% data.frame()
+## Creating the testing set: X and Y 
+data_knn_test_X <- data_knn %>% select(all_of(starts_with("avg"))) %>% slice(-train_subsetter) %>% data.frame()
+data_knn_test_Y <- data_knn %>% select(WB_type) %>% slice(-train_subsetter) %>% data.frame()
+
+## Defining the train_control argument
+train_control <- trainControl(method="cv", number = 10)
+
+k_lots <- data.frame(k=seq(from=1, to=500, by=5))
+
+set.seed(1234)
+
+knn_reg_cv_10 <- train(x = data_knn_train_X,
+                       y = data_knn_train_Y$WB_type,
+                       method="knn",
+                       tuneGrid = k_lots,
+                       trControl = train_control)
+
+ggplot(knn_reg_cv_10$results, aes(x=k, y=Accuracy, color = "Red")) + geom_point()
+
+
+
+
+
+test <- prcomp(data_knn, center = T, scale = T)
+
+
+
+# Prepping for knn
+
+
+
+
+
+
 
 
 
@@ -254,7 +363,16 @@ rownames(data_a1_pca$x) %in% unique(data$obs_id)
 ## step 1: split the dataset between train and test keeping in mind the biais between the groups
 ## step 2: train the model
 
-# 2 investigate the possibility of using neural networks for the supervised learning
+# 2 try inputing using the mean per AT instead of 0 for missing measured values 
+
+# 3 investigate the possibility of using neural networks for the supervised learning
+
+
+
+
+
+
+
 
 
 

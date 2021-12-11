@@ -15,6 +15,7 @@
 # 11. Use of near zero variance filter (caret) to drop the variables with zero or near zero variance
 # 12. Rework of non zero variance filter in the main script (rows 252 to 282) for option 1; to be used as template for options 2 to 4 and possibly write up a function
 # 13. Restructuring of code and renaming of data frames pertaining to the different data grouping approaches
+# 14. This is a test for Git by Ludo (to be removed)
 
 
 # Loading the required packages

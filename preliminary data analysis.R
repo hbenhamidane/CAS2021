@@ -1,6 +1,9 @@
 # WISE Switzerland data analysis script
 # Version: {0.7}
 # Author: {Hisham Ben Hamidane}
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#
 # Changes:
 # 1. Addition of script metadata and version
 # 2. Improvement of script comments
@@ -15,9 +18,40 @@
 # 11. Use of near zero variance filter (caret) to drop the variables with zero or near zero variance
 # 12. Rework of non zero variance filter in the main script (rows 252 to 282) for option 1; to be used as template for options 2 to 4 and possibly write up a function
 # 13. Restructuring of code and renaming of data frames pertaining to the different data grouping approaches
-# 14. This is a test for Git by Ludo (to be removed)
-
-
+# 14. Addition of standard deviation per AT as an additional dimension
+# 15. Implementation of supervised clustering using k nearest neighbours
+# 16. Evaluation of differences between 0 and mean inputation
+# 17. Reorganization of code and addition of comments
+# 18. Addition of To DO, to Investigate and Problems comment sections to track analysis progress
+# 19. Reorganization of general parameters for the analysis in 0.
+#
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#
+# To DO:
+# - Rerun the knn model using the raw measured values and not the PCA results
+# - Compare the 0 inputation with the mean inputation per AT (mean across all sites, or mean across all sites of a specific category (WB_type or WB_name))
+# - Recap the parameter evaluation for the nearZeroVar filtering (optimization)
+# - Replicated the knn clustering analysis using WB_system_name instead of WB_type
+#
+# To Investigate:
+# - bootstraping vs cross-validation for knn model train control
+# - impact of including sd vs clustering efficiency
+# - alternatives to knn for clustering
+#
+# # # Problems # # #
+## Overview of the distribution of data between the higher level categories (Water Body system)
+# table(data$WB_system_name, data$WB_type)
+### uneven distribution of measurements between water basins; will have to be accounted for when sampling 
+#           GW    LW    RW
+# DANUBE   353     0   688
+# PO      1384    26  3202
+# RHINE  16147    48 74313
+# RHONE   2210   477 12009
+#
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#
 # Loading the required packages
 library(tidyverse)
 library(lubridate)
@@ -29,22 +63,30 @@ library(caret)
 library(factoextra)
 library(caret)
 library(mclust)
-
-
+library(gridExtra)
+#
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#
 # 0. Parameters for the analysis
 ##Defining variables for dataselection
 # meas_count_threshold <- 5000
-# Selected analytical targets 
+## Selected analytical targets 
 curated_ATs <- c("EEA_3152-01-0", "EEA_3142-01-6", "CAS_16887-00-6", "CAS_14797-55-8")
-
-
-
+## setting the random seed
+set.seed(1234)
+## Defining the train:test data splitting for supervised and unsupervised model training (0 < split_p < 1)
+split_p <- 0.75
+#
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#
 # 1. Loading the data and metadata, merging the 2 together and manipulating variables (selecting/renaming column names, adding new columns)
 ## EU dataset for water quality; filtered available database for Switzerland entries (country code = CH)
 ### path 1 (hbh private cpu)
-# setwd("C:/Users/shami/Documents/CAS 2021/")
+setwd("C:/Users/shami/Documents/CAS 2021/")
 ### path 1 (hbh professional cpu)
-setwd("C:/Users/hisham.benhamidane/OneDrive - Thermo Fisher Scientific/Documents/R/projects/CAS2021")
+# setwd("C:/Users/hisham.benhamidane/OneDrive - Thermo Fisher Scientific/Documents/R/projects/CAS2021")
 wd <- getwd()
 ##Reading the data and metadata
 data <- read.csv("DataExtract_Switzerland.csv", header = T)
@@ -94,10 +136,10 @@ data$obs_id_S <- str_c(data$semester, str_extract(data$WB_type, pattern = "^[[:a
 # Adding month information to the unique obs_id identifyer
 data$obs_id_M <- str_c(data$meas_month, str_extract(data$WB_type, pattern = "^[[:alpha:]]{1}"), site_num, sep="-")
 rm(site_num)
-
-
-
-
+#
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#
 # 2. Creating data overview, assessing data completeness and missing values 
 ## Graphical representation of dataframe after edits in 1 using Visdat
 # vis_dat(data, warn_large_data = F)
@@ -126,23 +168,29 @@ data_completeness <- data %>% select(AT_name, AT_code) %>% filter(!duplicated(AT
                               arrange(desc(total_values), number_of_sites, desc(avg_meas_per_site), not_measured_perc, missing_perc)
 #Filtering data to remove missing values
 data_f <- data %>% filter(!is.na(measured_value))
-
-
-
+#
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#
 # 3. Preparing the data for k-means clustering based on the different grouping conditions we wish to use in the analysis:
+## parameters for the near zero variance filtering:
+freqCut <- 85/15
+uniqueCut <- 33
+
 ## Approach 1: 1 measurement per site (all measurements for a given site ID will be averaged); missing values will be 0 filled
-data_a1 <- data  %>% group_by(obs_id, AT_code) %>% mutate(avg_measured_value = mean(measured_value)) %>%  ungroup() %>%   
-  select(obs_id, AT_code, avg_measured_value) %>% 
+data_a1 <- data  %>% group_by(obs_id, AT_code) %>% mutate(avg = mean(measured_value), sd = sd(measured_value)) %>%  ungroup() %>%   
+  select(obs_id, AT_code, avg, sd) %>% 
   distinct() %>%
-  mutate(avg_measured_value = replace_na(data = avg_measured_value, 0)) %>% 
-  pivot_wider(id_cols = obs_id, names_from = AT_code, values_from = avg_measured_value, values_fill = 0)
+  mutate(avg = replace_na(data = avg, 0),
+         sd = replace_na(data = sd, 0)) %>% 
+  pivot_wider(id_cols = obs_id, names_from = AT_code, values_from = c(avg, sd), values_fill = 0)
 ### checking the test df structure and content
 vis_dat(data_a1)
 ### creating a unique row index and passing it as rownames and retaining only value columns (to retain a num matrix)
 data_a1_index <- data_a1$obs_id
 data_a1 <- data_a1 %>% select(-obs_id)
 ### Filtering and removing variables based on near zero variance
-data_a1_nzv_subsetter <- nearZeroVar(data_a1, freqCut = 80/20, uniqueCut = 99 ,saveMetrics = F)
+data_a1_nzv_subsetter <- nearZeroVar(data_a1, freqCut = freqCut, uniqueCut = uniqueCut ,saveMetrics = F)
 data_a1 <- data_a1 %>% select(-all_of(data_a1_nzv_subsetter))
 ### Scaling (normalizing the data and converting to a matrix)
 data_a1 <- scale(data_a1)
@@ -150,45 +198,48 @@ data_a1 <- scale(data_a1)
 row.names(data_a1) <- data_a1_index
 
 ## Approach 2: 1 measurement per site AND per semester (to account for the seasonal variability but still limit the PCA projection space); missing values will be 0 filled
-data_a2 <- data  %>% group_by(obs_id_S, AT_code) %>% mutate(avg_measured_value = mean(measured_value)) %>%  ungroup() %>%   
-  select(obs_id_S, AT_code, avg_measured_value) %>% 
+data_a2 <- data  %>% group_by(obs_id_S, AT_code) %>% mutate(avg = mean(measured_value), sd = sd(measured_value)) %>%  ungroup() %>%   
+  select(obs_id_S, AT_code, avg, sd) %>% 
   distinct() %>%
-  mutate(avg_measured_value = replace_na(data = avg_measured_value, 0)) %>% 
-  pivot_wider(id_cols = obs_id_S, names_from = AT_code, values_from = avg_measured_value, values_fill = 0)
+  mutate(avg = replace_na(data = avg, 0), sd = replace_na(data = sd, 0)) %>% 
+  pivot_wider(id_cols = obs_id_S, names_from = AT_code, values_from = c(avg, sd), values_fill = 0)
 ### checking the test df structure and content
 vis_dat(data_a2)
 ### creating a unique row index and passing it as rownames and retaining only value columns (to retain a num matrix)
 data_a2_index <- data_a2$obs_id_S
 data_a2 <- data_a2 %>% select(-obs_id_S)
 ### Filtering and removing variables based on near zero variance
-data_a2_nzv_subsetter <- nearZeroVar(data_a2, saveMetrics = F)
+data_a2_nzv_subsetter <- nearZeroVar(data_a2, freqCut = freqCut, uniqueCut = uniqueCut, saveMetrics = F)
 data_a2 <- data_a2 %>% select(-all_of(data_a2_nzv_subsetter))
+rm(data_a2_nzv_subsetter)
 ### Scaling (normalizing the data and converting to a matrix)
 data_a2 <- scale(data_a2)
 ### Adding a unique row identifier
 row.names(data_a2) <- data_a2_index
 
 ## Approach 3: 1 measurement per site AND per month (to provide the maximum meaningful time resolution per site, might resulte in crowded PCA projection space); missing values will be 0 filled
-data_a3 <- data  %>% group_by(obs_id_M, AT_code) %>% mutate(avg_measured_value = mean(measured_value)) %>%  ungroup() %>%   
-  select(obs_id_M, AT_code, avg_measured_value) %>% 
+data_a3 <- data  %>% group_by(obs_id_M, AT_code) %>% mutate(avg = mean(measured_value), sd = sd(measured_value)) %>%  ungroup() %>%   
+  select(obs_id_M, AT_code, avg, sd) %>% 
   distinct() %>%
-  mutate(avg_measured_value = replace_na(data = avg_measured_value, 0)) %>% 
-  pivot_wider(id_cols = obs_id_M, names_from = AT_code, values_from = avg_measured_value, values_fill = 0)
+  mutate(avg = replace_na(data = avg, 0), sd = replace_na(data = sd, 0)) %>% 
+  pivot_wider(id_cols = obs_id_M, names_from = AT_code, values_from = c(avg, sd), values_fill = 0)
 ### checking the test df structure and content
 vis_dat(data_a3)
 ### creating a unique row index and passing it as rownames and retaining only value columns (to retain a num matrix)
 data_a3_index <- data_a3$obs_id_M
 data_a3 <- data_a3 %>% select(-obs_id_M)
 ### Filtering and removing variables based on near zero variance
-data_a3_nzv_subsetter <- nearZeroVar(data_a3, saveMetrics = F)
+data_a3_nzv_subsetter <- nearZeroVar(data_a3, freqCut = freqCut, uniqueCut = uniqueCut, saveMetrics = F)
 data_a3 <- data_a3 %>% select(-all_of(data_a3_nzv_subsetter))
+rm(data_a3_nzv_subsetter)
 ### Scaling (normalizing the data and converting to a matrix)
 data_a3 <- scale(data_a3)
 ### Adding a unique row identifier
 row.names(data_a3) <- data_a3_index
-
-
-
+#
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#
 # 4. Performing K-means clustering (unsupervised learning approach)
 ## Step 1: determining the optimal number of clusters using elbow/silhouette plots
 ### Approach 1: site average
@@ -202,31 +253,114 @@ fviz_nbclust(data_a3, kmeans, method = "silhouette")
 ### Approach 1: site average; optimal number of clusters k = 2
 km_out_a1 <- kmeans(data_a1, centers=2, nstart=100)
 km_clust_a1 <- km_out_a1$cluster
-### Approach 2: site average; optimal number of clusters k = 2 or 4
-km_out_a2 <- kmeans(data_a2, centers=4, nstart=100)
+### Approach 2: site average; optimal number of clusters k = 2
+km_out_a2 <- kmeans(data_a2, centers=2, nstart=100)
 km_clust_a2 <- km_out_a2$cluster
-### Approach 3: site average; optimal number of clusters k = 2
-km_out_a3 <- kmeans(data_a3, centers=2, nstart=100)
+### Approach 3: site average; optimal number of clusters k = 3
+km_out_a3 <- kmeans(data_a3, centers=3, nstart=100)
 km_clust_a3 <- km_out_a3$cluster
 
 ## Step 3: Creating a visualization to evaluate the clustering along the first 2 PCA dimensions
 ### Approach 1: site average; optimal number of clusters k =
 fviz_cluster(list(data=data_a1, cluster = km_clust_a1))
-### Approach 1: site average; optimal number of clusters k =
+0### Approach 1: site average; optimal number of clusters k =
 fviz_cluster(list(data=data_a2, cluster = km_clust_a2))
 ### Approach 1: site average; optimal number of clusters k =
 fviz_cluster(list(data=data_a3, cluster = km_clust_a3))
-
-#_______________________________________
-#Further clustering analysis
-# Performing the PCA
+#
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#
+# 5. Performing and visualize a principal component analysis and attempting to cluster using mclust (multiple models)
+# Step 1 Performing the PCA on the site aggregated data
 data_a1_pca <- prcomp(data_a1, center = T, scale. = T)
-# Visualizing the object with package factoextra
-## variance by eigenvector
+# Variance by eigenvector (Visualizationwith package factoextra
 fviz_eig(X = data_a1_pca)
-## PCA biplot (PC1, PC2) colored by water body type with AT vectors expressing variance projected in PCA referential 
-cat_test <- as.factor(str_extract(string = rownames(data_a1_pca$x), pattern = "^[:alpha:]{1}"))
-fviz_pca_biplot(data_a1_pca, axes = c(1,2), repel = T, col.ind = cat_test)
+# Creating a water body factor for plot coloring using matrix row names
+cat_WB <- as.factor(str_extract(string = rownames(data_a1_pca$x), pattern = "^[:alpha:]{1}"))
+# Creating a water system name factor for plot coloring (requires merging and filtering of the pivot wider rearranged data before column dropping)
+# cat_WS <- 
+# Step 2 Visualizing the PCA along its main 3 dimensions
+## PCA biplot colored by water body type with AT vectors expressing variance projected in PCA referential 
+### PC1 vs PC2
+fviz_pca_biplot(data_a1_pca, axes = c(1,2), repel = T, col.ind = cat_WB, )
+### PC1 vs PC3
+fviz_pca_biplot(data_a1_pca, axes = c(1,3), repel = T, col.ind = cat_WB, )
+### PC2 vs PC3
+fviz_pca_biplot(data_a1_pca, axes = c(2,3), repel = T, col.ind = cat_WB, )
+#
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#
+# 6. Supervised learning using k-nearest neighbours
+## Create a dataframe containing all obs x var and additional factor columns for the WB type and WB name 
+data_knn <- data  %>% group_by(obs_id, AT_code) %>% mutate(avg = mean(measured_value), sd = sd(measured_value)) %>%  ungroup() %>%   
+  select(obs_id, AT_code, avg, sd) %>% 
+  distinct() %>%
+  mutate(avg = replace_na(data = avg, 0), sd = replace_na(data = sd, 0)) %>% 
+  pivot_wider(id_cols = obs_id, names_from = AT_code, values_from = c(avg, sd), values_fill = 0)
+### Adding the WB type and WB name columns
+data_knn <- data %>% select(obs_id, WB_type, WB_system_name) %>% distinct() %>% right_join(data_knn, by="obs_id")
+
+## 6.1 Creating a train/test data set based on the PC1 from the PCA analysis
+### Creating a subsetter to split the data between training and testing subsets using createDataPartition with a split p defined by split_p (defautl used 75:25 train:test)
+train_subsetter <- createDataPartition(y=data_knn$WB_type, times = 1,  p=split_p, list=F)
+
+## 6.2 Defining the training subset input (measured values transformed after PCA) and output (factor column used to group the data: WB_type or WB_system_name)
+### For train_x (training model input), keeping all the variables from the PCA analysis
+train_x <- data_a1_pca$x[train_subsetter,]
+### For train_y (training model correct output), the WB_type value is extracted from the row.names of the PCA matrix
+train_y <- as.factor(str_extract(string = rownames(data_a1_pca$x)[train_subsetter], pattern = "^[:alpha:]{1}"))
+
+## 6.3 Defining the testing subset input (measured values transformed after PCA) and correct output (factor column used to group the data: WB_type or WB_system_name)
+### For test_x (training model input), keeping all the variables from the PCA analysis
+test_x <- data_a1_pca$x[-train_subsetter,]
+### For test_y (testing model correct output), the WB_type value is extracted from the row.names of the PCA matrix
+test_y <- as.factor(str_extract(string = rownames(data_a1_pca$x)[-train_subsetter], pattern = "^[:alpha:]{1}"))
+
+## 6.4 Defining the train control argument for the model. Here using the cross validation method; more investigation into bootstrapping ("boot") and cross-validation ("cv") is required
+train_control <- trainControl(method="cv", number = 10)
+
+## 6.5 Defining a range for parameter k (number of nearest neighbours taken into consideration when evaluating an unknown observation)  to test for (model optimization)
+###  Note: A suggested starting point for k is sqrt(nrow(data_knn)); k should preferably be an odd number for better decision power (since knn is vote based)
+k_range <- data.frame(k=seq(from=1, to=2*floor(sqrt(nrow(data_knn))), by=1))
+
+## 6.6 Running a first model to determine the optimal number of k
+knn_model_Kopt <- train(x = train_x,
+                        y = train_y,
+                        method="knn",
+                        tuneGrid = k_range,
+                        trControl = train_control)
+## Optimal number of k determined by the model:
+k_opt <- data.frame(k=knn_model_Kopt$bestTune$k)
+## Visualizing the model performance as a function of k
+ggplot(knn_model_Kopt$results, aes(x=k, y=Accuracy, color = "Red")) + geom_point()
+
+## 6.7 Training a model based on the optimal number of k
+knn_model <- train(x = train_x,
+                   y = train_y,
+                   method="knn",
+                   tuneGrid = k_opt,
+                   trControl = train_control)
+
+## 6.8 Predicting values from test_x and comparing them with the expected output test_y
+### Creating a vector of predicted values
+test_pred <- predict(object = knn_model, newdata = test_x)
+### Creating a dataframe model_values combining the actual and predicted values for the test subset
+model_values <- data.frame(obs=test_y, pred=test_pred)
+### Visualizing the confusion matrix and summary statistics
+confusionMatrix(test_pred, test_y)
+#
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+#____________________________________________________________________________________________________________________________________________________________________________________________________________________
+## REWORK AND REORGANISATION NEEDED BEYOND THIS LINE
+
 
 ## 1st attempt at model based clustering
 data_a1_mclust <- Mclust(data_a1,G = 1:12)
@@ -235,39 +369,75 @@ fviz_mclust(data_a1_mclust, "classification", "point")
 ## optimal number of clusters found to be 1; further look into BIC required to understand this result
 
 
-### grouping/coloring using the water system name instead of the water body type
-rownames(data_a1_pca$x) %in% unique(data$obs_id)
+
+## Creating the training set: X and Y 
+data_knn_train_X <- data_knn %>% select(all_of(starts_with("avg"))) %>% slice(train_subsetter) %>% data.frame()
+# TRy to rework the code to also select sd columns & all_of(starts_with("sd"))
+data_knn_train_Y <- data_knn %>% select(WB_type) %>% slice(train_subsetter) %>% data.frame()
+## Creating the testing set: X and Y 
+data_knn_test_X <- data_knn %>% select(all_of(starts_with("avg"))) %>% slice(-train_subsetter) %>% data.frame()
+data_knn_test_Y <- data_knn %>% select(WB_type) %>% slice(-train_subsetter) %>% data.frame()
+
+## Defining the train_control argument
+train_control <- trainControl(method="cv", number = 10)
+
+k_lots <- data.frame(k=seq(from=1, to=500, by=5))
+
+set.seed(1234)
+
+knn_reg_cv_10 <- train(x = data_knn_train_X,
+                       y = data_knn_train_Y$WB_type,
+                       method="knn",
+                       tuneGrid = k_lots,
+                       trControl = train_control)
+
+ggplot(knn_reg_cv_10$results, aes(x=k, y=Accuracy, color = "Red")) + geom_point()
+
+
+test <- prcomp(data_knn, center = T, scale = T)
+
+
+
+#_________________________________________________________
+# Supervised learning using k nearest neighbours using knn3 from the caret package
+# Defining training and testing data subsets 
+# Clustering attempt on water body
+
+# Data preparation according to the previous steps defined in 3
+data_knn <- data  %>% group_by(obs_id, AT_code) %>% mutate(avg = mean(measured_value), 
+                                                          sd = sd(measured_value),
+                                                          min = min(measured_value),
+                                                          max = max(measured_value)) %>%  ungroup() %>%   
+  select(obs_id, AT_code, avg, sd, min, max) %>% 
+  distinct() %>%
+  mutate(avg = replace_na(data = avg, 0),
+         sd = replace_na(data = sd, 0),
+         min = replace_na(data = min, 0),
+         max = replace_na(data = sd, 0)) %>% 
+  pivot_wider(id_cols = obs_id, names_from = AT_code, values_from = c(avg, sd, min, max), values_fill = 0)
+
+# Default near zero var parameters
+data_knn_nzv_subsetter <- nearZeroVar(data_knn, freqCut = 95/5, uniqueCut = 10 ,saveMetrics = F)
+# Creating a table with the group information: water body type and name
+data_knn_clusterID <- data %>% select(obs_id, WB_system_name, WB_type)
+# applying nZv filter and adding WB identifiers
+data_knn <- data_knn %>% select(-all_of(data_knn_nzv_subsetter)) %>% left_join(data_knn_clusterID, by = "obs_id")
+# scaling the data
+data_knn <- scale(data_knn)
+data_knn_index <- data_knn$obs_id
+data_knn <- data_knn %>% select(-obs_id)
+row.names(data_knn) <- data_knn_index
+# Creating a seed for the random number generator
+set.seed(123)
+# Splitting the data set between train and test with a 80:20 ratio
+size <- floor(0.8*nrow(data_knn))
+sample(x = seq_len(nrow(data)), size = size)
 
 
 
 #______________________________________________________________________________________________________________________________________________________________________________________________________________________
 #______________________________________________________________________________________________________________________________________________________________________________________________________________________
 #______________________________________________________________________________________________________________________________________________________________________________________________________________________
-
-# Next steps: 
-
-# 0 investigate the parameters of near zero variance filter and try to tweak it
-
-# 1 supervised learning using water body type (RW, GW or LW) as cluster values for each of the 3 approaches
-## step 1: split the dataset between train and test keeping in mind the biais between the groups
-## step 2: train the model
-
-# 2 investigate the possibility of using neural networks for the supervised learning
-
-
-
-
-
-# # # Problems # # #
-## Overview of the distribution of data between the higher level categories (Water Body system)
-table(data_f$WB_system_name, data_f$WB_type)
-### uneven distribution of measurements between water bassins; will have to be accounted for when sampling 
-#           GW    LW    RW
-# DANUBE   353     0   688
-# PO      1384    26  3202
-# RHINE  16147    48 74313
-# RHONE   2210   477 12009
-
 
 # 5. Creating aggregated statistical values beyond the mean for the different grouping conditions
 ## For a first clustering attempt, values per site and AT will be averaged (removing the time dimension for now)

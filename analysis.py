@@ -55,12 +55,15 @@ if __name__ == "__main__":
     from sklearn.feature_selection import VarianceThreshold
     from sklearn.model_selection import train_test_split
     import umap
+    from imblearn.over_sampling import RandomOverSampler
+    from imblearn.under_sampling import RandomUnderSampler
+    from collections import Counter
     
     
     # %% LOAD FILES
-    path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
-        "\\", "/")
-    # path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets".replace("\\", "/")
+    # path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
+    #     "\\", "/")
+    path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets".replace("\\", "/")
     os.chdir(path)
     
     # WISE tabular data
@@ -476,19 +479,27 @@ if __name__ == "__main__":
     # Selection of categories
     # dfa = dfa[dfa.parameterWaterBodyCategory != "LW"]
     
+    # Rename river body types
+    dfa.loc[df.parameterWaterBodyCategory == 'GW', 'parameterWaterBodyCategory'] = 'ground'
+    dfa.loc[df.parameterWaterBodyCategory == 'RW', 'parameterWaterBodyCategory'] = 'river'
+    dfa.loc[df.parameterWaterBodyCategory == 'LW', 'parameterWaterBodyCategory'] = 'lake'
+    
     # Selection of analytical targets
     '''
     There are several options:
         - Option A: select targets that have data (measured values) on all
         categories to classify => keeps ~max number of targets
             + drop NAs or not? => comparison to be done
+            At the moment, I am more in favour of removing targets that are not
+            at all measured for one or more of the categories. It makes it more
+            fair when I susbsequently impute NAs with 0.
         - Option B: select specific (e.g. most promising) targets based on
         analysis/exploration
     '''
     # Option A - select top targets (many sub-options...)
     # targets = target_counts.iloc[:19].index
-    # targets = target_perWB_counts.dropna().index
-    target = target_perRBD_counts.dropna().index
+    targets = target_perWB_counts.dropna().index
+    # targets = target_perRBD_counts.dropna().index
     # Option B - select specific targets
     # targets = ["Dissolved oxygen", "Electrical conductivity", "Total phosphorus", "pH"]
     
@@ -509,8 +520,9 @@ if __name__ == "__main__":
     Without scaling, the LinearSVC method fails to converge.
     - Scaling is done before filling NAs.
     '''
-    data = StandardScaler().fit_transform(dfa_g)
-    
+    data = StandardScaler().fit_transform(dfa_g.values)
+    data = pd.DataFrame(data, index=dfa_g.index, columns=dfa_g.columns)
+   
     # Manage Na values / Imputation
     '''
     Keeping all targets leads to a lot of NAs:
@@ -524,7 +536,7 @@ if __name__ == "__main__":
     # Option A: Drop NA
     # dfa_g = dfa_g.dropna()
     # Option B: impute and select features 
-    data = np.nan_to_num(data, copy=False)
+    data.fillna(value=0, inplace=True)
     
     # Optional: filter targets using a feature selection method
     '''
@@ -544,12 +556,42 @@ if __name__ == "__main__":
     sns.pairplot(data=dfa_g_plot, hue="WBtype")
     sns.pairplot(data=dfa_g_plot, hue="RBdistrict")
     
+    # Manage imbalanced Datasets
+    '''
+    rebalanced datasets to even (or reduce imbalance) representation of categories
+    '''
+    # how balanced are the categories?
+    dist_WB = data.index.get_level_values('parameterWaterBodyCategory').value_counts()
+    dist_RBD = data.index.get_level_values('rbdName').value_counts()
+    
+    print(Counter(dist_WB))
+    print(Counter(dist_RBD))
+    
+    plt.figure()
+    ax = dist_WB.plot(kind='barh')
+    ax.invert_yaxis()
+    ax.set_xlabel('number of monitoring sites')
+    ax.set_title('Number of sites per category')
+    
+    plt.figure()
+    ax = dist_RBD.plot(kind='barh')
+    ax.invert_yaxis()
+    ax.set_xlabel('number of monitoring sites')
+    ax.set_title('Number of sites per category')
+    
+    # define categories to build model on
+    labels = data.index.get_level_values('parameterWaterBodyCategory')#.to_numpy()
+    
+    # mix of over- and under-sampling
+    '''!! try converting labels to integers to troubleshoot fit_resample error on random_state!!
+    '''
+    data_orig = data.copy()
+    over = RandomOverSampler(sampling_strategy='auto')
+    data, labels = over.fit_resample(data, labels)
+    # TBD: reconstruct dataframe using over.sample_indices_
+    
     # Split train and test datasets
-    '''
-    !! if NAs were dropped for numerical data, labels must be re-evaluated !!
-    '''
-    train_perc = 0.3
-    labels = dfa_g.index.get_level_values(1)
+    train_perc = 0.5
     x_train, x_test, y_train, y_test = train_test_split(data, labels, train_size=train_perc, stratify=labels)
     
     # ------------------------------
@@ -562,23 +604,26 @@ if __name__ == "__main__":
         - repeat exercise with more/less targets (depending on feature selection)
         - run cross validation
     '''
-    # x_train = dfa_g.sample(frac=0.8).sort_index(level=1)
+    # x_train = data.sample(frac=0.8).sort_index(level=1)
     # y_train = x_train.index.get_level_values(1)
     # x_train = StandardScaler().fit_transform(x)
     
     # classifier = svm.LinearSVC()
     # classifier.fit(x, y)
-    # x_test = StandardScaler().fit_transform(dfa_g)
+    # x_test = StandardScaler().fit_transform(data)
     # y_test = classifier.predict(x_test)
     
     classifier = svm.LinearSVC()
     classifier.fit(x_train, y_train)
-    model_labels_test = classifier.predict(x_test)
+    y_pred = classifier.predict(x_test)
     
-    cm = metrics.confusion_matrix(y_test, model_labels_test, labels=classifier.classes_)
+    cm = metrics.confusion_matrix(y_test, y_pred, labels=classifier.classes_)
     cm_disp = metrics.ConfusionMatrixDisplay(cm, display_labels=classifier.classes_)
     cm_disp.plot(cmap='Greens')
     plt.title('Confusion Matrix, train/test split = {:n}/{:n}'.format(train_perc*100, (1-train_perc)*100))
+    
+    scores = metrics.classification_report(y_test, y_pred, target_names=classifier.classes_)
+    print(scores)
     
     # ------------------------------
     # Clustering (unsupervised)
@@ -643,9 +688,13 @@ if __name__ == "__main__":
     # 2D projections
     # ------------------------------
     # UMAP projection
+    '''
+    UMAP can randomly output very different projections
+        + use random generator to see if results are indeed consistent
+    '''
     umap_model = umap.UMAP()
     embedding = umap_model.fit_transform(data)
-    embedding.shape
+    embedding.shape   
     
     plt.figure()
     plt.scatter(
@@ -658,9 +707,9 @@ if __name__ == "__main__":
     sns.relplot(
         embedding[:, 0],
         embedding[:, 1],
-        hue=dfa_g.WBtype,
-        style=dfa_g.WBtype,
-        s=20,
+        hue=data.index.get_level_values('parameterWaterBodyCategory'),
+        style=data.index.get_level_values('rbdName'),
+        s=40,
         alpha=0.8,
         palette='muted')
     plt.title('UMAP projection of the top-{} targets, real label'.format(target_nb), fontsize=12)
@@ -668,20 +717,26 @@ if __name__ == "__main__":
     # PCA
     pca = PCA()
     pca.fit(data)
+    data_pcaed = pca.transform(data)
+    
     plt.plot(pca.explained_variance_ratio_, '-o')
     plt.ylabel('percentage of explained variance')
     plt.title('Scree plot')
     plt.show()
     
-    data_pcaed = pca.transform(data)
     sns.scatterplot(data_pcaed[:,0],data_pcaed[:,1], hue=cluster_labels)
     plt.xlabel('First component')
     plt.ylabel('Second component')
     plt.title('PCA - Kmeans clusters')
     plt.show()
     
-    data_pcaed = pca.transform(data)
-    sns.scatterplot(data_pcaed[:,0],data_pcaed[:,1], hue=dfa_g.WBtype)
+    sns.relplot(data_pcaed[:,0],
+                data_pcaed[:,1],
+                hue=data.index.get_level_values('parameterWaterBodyCategory'),
+                style=data.index.get_level_values('rbdName'),
+                s=40,
+                alpha=0.8,
+                palette='muted')
     plt.xlabel('First component')
     plt.ylabel('Second component')
     plt.title('PCA- real labels')

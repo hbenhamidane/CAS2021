@@ -24,6 +24,9 @@ TO DO:
 - check map coordinate conversion with function to_crs() instead of manual transformation
 - use ecomorphology map (continuous rivers) instead of typology map
     + troubleshoot LV03 Vs LV95
+    
+TO DO (great to have/explore):    
+- rewrite script using functions and the workflow will follow from it
 """
 __author__ = "Ludovic Le Reste"
 __credits__ = ["Hisham Ben Hamidane", "Ludovic Le Reste"]
@@ -313,6 +316,14 @@ if __name__ == "__main__":
     ax.set_title('Number of measurements per type of water body')
     plt.tight_layout()
     
+    # River basin districts: histogram
+    plt.figure()
+    ax = dfm.rbdName.value_counts().plot(kind='barh')
+    ax.invert_yaxis()
+    ax.set_xlabel('number of measurements')
+    ax.set_title('Number of measurements per river basin disctrict')
+    plt.tight_layout()
+    
     # Targets
     plt.figure()
     ax = df.observedPropertyDeterminandLabel.value_counts().plot(kind='barh',figsize=(10, 30))
@@ -439,10 +450,34 @@ if __name__ == "__main__":
     
     
     # %% MACHINE LEARNING
+    '''
+    Workflow:
+        Drop targets that are not common to all categories
+        Group by monitoring sites, average values
+        Scale data
+        Replace NAs by zeros
+        TBD: rebalance dataset
+        Split training and test datasets
+            50/50 split
+            Keep proportionnality of labelled data in the train and test data
+            TBD: cross-validation
+        Run classification model
+            Linear SVC
+            TBD: K-neighbors
+        Results
+            Confusion matrix
+            Scores
+    '''
     # ------------------------------
     # preliminary investigation
     # ------------------------------
     dfa = dfm.copy()
+    
+    # Rename river body types
+    dfa.loc[df.parameterWaterBodyCategory == 'GW', 'parameterWaterBodyCategory'] = 'ground'
+    dfa.loc[df.parameterWaterBodyCategory == 'RW', 'parameterWaterBodyCategory'] = 'river'
+    dfa.loc[df.parameterWaterBodyCategory == 'LW', 'parameterWaterBodyCategory'] = 'lake'
+    
     # drop empty results 
     dfa.dropna(subset = ["resultObservedValue"], inplace=True)
     target_perWB_counts = (dfa
@@ -450,8 +485,8 @@ if __name__ == "__main__":
                         .observedPropertyDeterminandLabel
                         .value_counts()
                         .unstack(0)
-                        .sort_values(by=['LW', 'GW', 'RW'], ascending=False)
-                        .reindex(columns=['LW', 'GW', 'RW'])
+                        .sort_values(by=['lake', 'ground', 'river'], ascending=False)
+                        .reindex(columns=['lake', 'ground', 'river'])
                         )
     target_perRBD_counts = (dfa
                         .groupby(by="rbdName")
@@ -479,10 +514,6 @@ if __name__ == "__main__":
     # Selection of categories
     # dfa = dfa[dfa.parameterWaterBodyCategory != "LW"]
     
-    # Rename river body types
-    dfa.loc[df.parameterWaterBodyCategory == 'GW', 'parameterWaterBodyCategory'] = 'ground'
-    dfa.loc[df.parameterWaterBodyCategory == 'RW', 'parameterWaterBodyCategory'] = 'river'
-    dfa.loc[df.parameterWaterBodyCategory == 'LW', 'parameterWaterBodyCategory'] = 'lake'
     
     # Selection of analytical targets
     '''
@@ -548,13 +579,13 @@ if __name__ == "__main__":
     # var = dfa_g.var(axis='rows')
     # test = sel.fit_transform(dfa_g)
     
-    # Optional plot
-    dfa_g_plot = dfa_g.copy()
-    dfa_g_plot['WBtype'] = dfa_g_plot.index.get_level_values(1)
-    dfa_g_plot['RBdistrict'] = dfa_g_plot.index.get_level_values(2)
-    # sns.relplot(data=dfa_g, x='pH', y='Electrical conductivity', hue="parameterWaterBodyCategory")
-    sns.pairplot(data=dfa_g_plot, hue="WBtype")
-    sns.pairplot(data=dfa_g_plot, hue="RBdistrict")
+    # # Optional plot
+    # dfa_g_plot = dfa_g.copy()
+    # dfa_g_plot['WBtype'] = dfa_g_plot.index.get_level_values(1)
+    # dfa_g_plot['RBdistrict'] = dfa_g_plot.index.get_level_values(2)
+    # # sns.relplot(data=dfa_g, x='pH', y='Electrical conductivity', hue="parameterWaterBodyCategory")
+    # sns.pairplot(data=dfa_g_plot, hue="WBtype")
+    # sns.pairplot(data=dfa_g_plot, hue="RBdistrict")
     
     # Manage imbalanced Datasets
     '''
@@ -680,7 +711,7 @@ if __name__ == "__main__":
     plt.show()
     
     # Clustering to plot
-    clusterer = KMeans(n_clusters=2)
+    clusterer = KMeans(n_clusters=5)
     clusterer.fit(data)
     cluster_labels = clusterer.predict(data)
     
@@ -721,13 +752,14 @@ if __name__ == "__main__":
     
     plt.plot(pca.explained_variance_ratio_, '-o')
     plt.ylabel('percentage of explained variance')
+    plt.xlabel('component number')
     plt.title('Scree plot')
     plt.show()
     
-    sns.scatterplot(data_pcaed[:,0],data_pcaed[:,1], hue=cluster_labels)
+    sns.scatterplot(data_pcaed[:,0],data_pcaed[:,1], hue=cluster_labels, palette='bright')
     plt.xlabel('First component')
     plt.ylabel('Second component')
-    plt.title('PCA - Kmeans clusters')
+    plt.title('PCA - K-means clusters')
     plt.show()
     
     sns.relplot(data_pcaed[:,0],

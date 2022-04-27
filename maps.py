@@ -15,6 +15,7 @@ import pandas as pd
 import geopandas as gpd
 import sys
 import matplotlib.pyplot as plt
+import folium
     
 if __name__ == "__main__":
     # path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
@@ -41,3 +42,7 @@ if __name__ == "__main__":
                   c='yellow', 
                   markersize=20,
                   zorder=3)
+    
+    swiss_center = sites[['lon', 'lat']].mean()
+    fmap = folium.Map(location=swiss_center)
+    fmap.save("./maps/map.html")

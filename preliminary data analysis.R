@@ -92,9 +92,9 @@ uniqueCut <- 33
 # 1. Loading the data and metadata, merging the 2 together and manipulating variables (selecting/renaming column names, adding new columns)
 ## EU dataset for water quality; filtered available database for Switzerland entries (country code = CH)
 ### path 1 (hbh private cpu)
-setwd("C:/Users/shami/Documents/CAS 2021/")
+# setwd("C:/Users/shami/Documents/CAS 2021/")
 ### path 1 (hbh professional cpu)
-# setwd("C:/Users/hisham.benhamidane/OneDrive - Thermo Fisher Scientific/Documents/R/projects/CAS2021")
+setwd("C:/Users/hisham.benhamidane/OneDrive - Thermo Fisher Scientific/Documents/R/projects/CAS2021")
 wd <- getwd()
 ##Reading the data and metadata
 data <- read.csv("DataExtract_Switzerland.csv", header = T)
@@ -144,6 +144,8 @@ data$obs_id_S <- str_c(data$semester, str_extract(data$WB_type, pattern = "^[[:a
 # Adding month information to the unique obs_id identifyer
 data$obs_id_M <- str_c(data$meas_month, str_extract(data$WB_type, pattern = "^[[:alpha:]]{1}"), site_num, sep="-")
 rm(site_num)
+#Filtering data to remove missing values
+data_f <- data %>% filter(!is.na(measured_value))
 #
 #____________________________________________________________________________________________________________________________________________________________________________________________________________________
 #____________________________________________________________________________________________________________________________________________________________________________________________________________________
@@ -174,8 +176,6 @@ data_completeness <- data %>% select(AT_name, AT_code) %>% filter(!duplicated(AT
                               mutate(avg_meas_per_site = total_values/number_of_sites,
                                      meas_site_ratio = number_of_sites/length(unique(data$site))*100) %>%
                               arrange(desc(total_values), number_of_sites, desc(avg_meas_per_site), not_measured_perc, missing_perc)
-#Filtering data to remove missing values
-data_f <- data %>% filter(!is.na(measured_value))
 #
 #____________________________________________________________________________________________________________________________________________________________________________________________________________________
 #____________________________________________________________________________________________________________________________________________________________________________________________________________________
@@ -266,8 +266,8 @@ km_out_a3 <- kmeans(data_a3, centers=2, nstart=100)
 km_clust_a3 <- km_out_a3$cluster
 
 ## Step 3: Creating a visualization to evaluate the clustering along the first 2 PCA dimensions
-### Approach 1: site average; optimal number of clusters k =
-fviz_cluster(list(data=data_a1, cluster = km_clust_a1))
+### Approach 1: site average; optimal number of clusters k = 2
+fviz_cluster(list(data=data_a1, cluster = km_clust_a1), repel = T, show.clust.cent = T, ellipse.alpha = 0.15, ggtheme = theme_classic())
 ### Approach 1: site average; optimal number of clusters k =
 fviz_cluster(list(data=data_a2, cluster = km_clust_a2))
 ### Approach 1: site average; optimal number of clusters k =
@@ -307,7 +307,7 @@ data_avg  <- data  %>% group_by(obs_id, AT_code) %>% mutate(avg = mean(measured_
   distinct() %>% 
   pivot_wider(id_cols = obs_id, names_from = AT_code, values_from = c(avg, sd), values_fill = NA)
 ### Visualizing the extent of missing (NA) values
-vis_dat(data_avg)
+vis_dat(data_avg[1:131])
 ### creating a unique row index and passing it as rownames and retaining only value columns (to retain a num matrix)
 data_avg_index <- data_avg$obs_id
 data_avg <- data_avg %>% select(-obs_id)
@@ -329,6 +329,15 @@ data_avg <- scale(data_avg)
 ### Adding a unique row identifier
 row.names(data_avg) <- data_avg_index
 
+# Inputation with the average value per category (i.e. per water body type or per river bassin
+# Based on the dataset distribution, a possibility would be to filter for only Rhine and inpute separately for RW and GW (dropping LW altogether)
+
+test <- data %>% filter(WB_system_name == "Rhine") %>% group_by(obs_id, AT_code, WB_type) %>% mutate(avg = mean(measured_value, na.rm=T), sd = sd(measured_value, na.rm=T)) %>%  ungroup() %>%   
+  select(obs_id, AT_code, WB_type, avg, sd) %>% 
+  distinct() %>% 
+  pivot_wider(id_cols = obs_id, names_from = AT_code, values_from = c(avg, sd), values_fill = NA)
+
+
 # 5.2 Performing the PCA on the site aggregated data for the 0 and average inputated matrices
 data_0_PCA <- prcomp(data_0, center = T, scale. = T)
 data_avg_PCA <- prcomp(data_avg, center = T, scale. = T)
@@ -337,12 +346,15 @@ data_avg_PCA <- prcomp(data_avg, center = T, scale. = T)
 fviz_eig(X = data_0_PCA, addlabels = T, main = "Variance explained by principal component dimension for the 0 inputed data", xlab = "Principal component dimension")
 fviz_eig(X = data_avg_PCA, addlabels = T, main = "Variance explained by principal component dimension for the Avg inputed data", xlab = "Principal component dimension")
 
-# 5.4 Creating PCA biplots for 0 and Avg inputed data, projecting on PC1 and PC2
+# 5.4 Creating PCA individual and biplots for 0 and Avg inputed data, projecting on PC1 and PC2
 ## 0 inputed PCA biplot
 cat_WB_0 <- as.factor(str_extract(string = rownames(data_0_PCA$x), pattern = "^[:alpha:]{1}"))
-fviz_pca_biplot(data_0_PCA, axes = c(1,2), repel = T, col.ind = cat_WB_0, title = "PCA projection along PC1 and PC2 for the 0-inputed dataset", geom = c("point"))
+fviz_pca_ind(data_0_PCA, axes = c(1,2), repel = T, col.ind = cat_WB_0, title = "PCA projection along PC1 and PC2 for the 0-inputed dataset")
+fviz_pca_ind(data_0_PCA, axes = c(1,2), repel = T, col.ind = cat_WB_0, title = "PCA projection along PC1 and PC2 for the 0-inputed dataset")
+fviz_pca_biplot(data_0_PCA, axes = c(1,2), repel = T, col.ind = cat_WB_0, title = "PCA projection along PC1 and PC2 for the 0-inputed dataset")
 ## Avg inputed PCA biplot
 cat_WB_avg <- as.factor(str_extract(string = rownames(data_avg_PCA$x), pattern = "^[:alpha:]{1}"))
+fviz_pca_ind(data_avg_PCA, axes = c(1,2), repel = T, col.ind = cat_WB_0, title = "PCA projection along PC1 and PC2 for the Avg-inputed dataset")
 fviz_pca_biplot(data_avg_PCA, axes = c(1,2), repel = T, col.ind = cat_WB_avg, title = "PCA projection along PC1 and PC2 for the Avg-inputed dataset")
 #
 #____________________________________________________________________________________________________________________________________________________________________________________________________________________

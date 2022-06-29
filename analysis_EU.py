@@ -108,17 +108,24 @@ if __name__ == "__main__":
     target_counts = df.observedPropertyDeterminandLabel.value_counts()
     
     # ------------------
-    # 
+    # df <-> spatial match
     # ------------------
     # Are all sites in df listed in spatial? => No
     df.monitoringSiteIdentifier.isin(spatial.monitoringSiteIdentifier).all()
     # Are there NaNs in df sites? => No
     df.monitoringSiteIdentifier.isnull().sum()
+    # Which sites in df are not listed in spatial? => 244 sites
+    mask = meas_persite_count.index.isin(spatial.monitoringSiteIdentifier)
+    sites_unmatch = meas_persite_count.index[~mask]
     
-    
+    # Are there NaNs in spatial? => Yes
+    spatial.monitoringSiteIdentifier.isnull().sum()
     # Are there duplicates in spatial sites? => Yes
-    sum(spatial.monitoringSiteIdentifier.dropna().duplicated(), )
-
+    # due to different monitoringSiteIdentifierScheme (the euMonitoringSiteCode has lat and lon, not the other)
+    sum(spatial.monitoringSiteIdentifier.duplicated(), )
+    mask = spatial.monitoringSiteIdentifier.duplicated()
+    sites_duplicated = spatial.monitoringSiteIdentifier.dropna()[mask].reset_index(drop=True)
+    
     
     # %% DATA EXPLORATION
     # ------------------
@@ -176,61 +183,6 @@ if __name__ == "__main__":
     MCPA is a herbicide
     What is MTBE, AOX, NTA?
     """
-    
-    # %% MAPS
-    # ------------------
-    # Open files
-    # ------------------
-    
-    # open FOEN simple river and lake map data
-    swiss_lakes_simple = gpd.read_file("maps/FOEN_swiss_water_simple/See_500.shp")
-    swiss_lakes_simple_LV95 = swiss_lakes_simple.geometry.translate(xoff=2000000, yoff=1000000)
-    
-    # open ecomorphology map
-    # This map shows continuous rivers Vs discontinued rivers for the typology map
-    # has info on river width, depth, altitude?
-    # https://map.geo.admin.ch/?lang=en&topic=bafu&zoom=8.18474730471186&bgLayer=ch.swisstopo.pixelkarte-farbe&catalogNodes=2771,2772,2780,2818&layers=ch.bafu.hydroweb-messstationen_zustand,ch.bafu.hydroweb-messstationen_temperatur,ch.bafu.oekomorphologie-f_abstuerze,ch.bafu.oekomorphologie-f_bauwerke,ch.bafu.oekomorphologie-f_abschnitte&layers_visibility=false,false,false,false,true&E=2608337.25&N=1125282.67
-    geo_df = gpd.read_file("maps/FOEN_Ecomorphology/Ökomorphologie_Stufe_F_mit_Geometrie (feature classes)/omch_vec2507_2013.gdb")
-    
-    swiss_topo_lakes = gpd.read_file("maps/SwissTopo_20161001_SMV1000_SHAPE_CHLV95/Shapefiles/20_DKM1M_GEWAESSER_PLY.shp")
-    
-    ''' maps investigated:   
-    # open FOEN river typology map data
-    # This map has data on discharge volume, slope, etc.
-    geo_df = gpd.read_file("maps/FOEN_river_typology/Typisierung_LV95/FGT.shp")
-        
-    swiss_rivers_simple = gpd.read_file("maps/FOEN_swiss_water_simple/Gewaesser_500_simplify_80.shp")
-    
-    # open swiss map (weird)
-    swiss_map_10k = gpd.read_file("maps/EEA_switzerland_shapefile/ch_10km.shp") 
-    
-    # open swiss topo maps
-    # from https://www.swisstopo.admin.ch/fr/geodata/landscape/boundaries3d.html
-    swiss_canton = gpd.read_file("maps/swissboundaries3d_2021-07_2056_5728.shp_SHAPEFILE_LV95_LN02/swissBOUNDARIES3D_1_3_TLM_KANTONSGEBIET.shp")
-    
-    # open topo map with water (not bound to swiss border)
-    # from https://www.swisstopo.admin.ch/en/geodata/maps/smv/smv1000.html#photo_video
-    swiss_topo_rivers = gpd.read_file("maps/SwissTopo_20161001_SMV1000_SHAPE_CHLV95/Shapefiles/21_DKM1M_GEWAESSER_LIN.shp")
-    swiss_topo_lakes = gpd.read_file("maps/SwissTopo_20161001_SMV1000_SHAPE_CHLV95/Shapefiles/20_DKM1M_GEWAESSER_PLY.shp")
-    '''
-    # ------------------
-    # Plots
-    # ------------------
-    # TO DO: site map should be created differently (from spatial rather than dfm) to reduce its size significantly
-    site_map = gpd.GeoDataFrame(dfm, geometry=gpd.points_from_xy(dfm.swiss_E, dfm.swiss_N))
-    site_map_2 = gpd.GeoDataFrame(dfm, geometry=gpd.points_from_xy(dfm.lon, dfm.lat))
-    fig, ax = plt.subplots()
-    ax = geo_df.plot(zorder=1)
-    swiss_lakes_simple.plot(ax=ax, color='green', zorder=2)
-    site_map_2.plot(ax=ax,
-                  marker='p', 
-                  edgecolor='black',
-                  c='yellow', 
-                  markersize=20,
-                  zorder=3)
-    
-    swiss_canton.plot()
-    swiss_topo_lakes.plot()
     
     
     # %% PLOTS

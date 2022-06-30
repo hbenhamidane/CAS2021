@@ -39,6 +39,8 @@ if __name__ == "__main__":
                   c='yellow', 
                   markersize=20,
                   zorder=3)
-    center = sites[['lon', 'lat']].mean()
+    center = sites[['lon', 'lat']].median()
     fmap = folium.Map(location=center)
+    
+    site_
     fmap.save("./maps/map.html")

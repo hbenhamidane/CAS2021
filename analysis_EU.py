@@ -17,6 +17,8 @@ TO DO:
     + perhaps in conjunction with great_expectations?
 - number of point per site per year per molecule 
 - check which parameters are common to all sites or to all waterbody types
+- merge df with spatial (only country and river basin info) for grouping
+    + missing and duplicate entries to be managed
     
 TO DO (great to have/explore):    
 - rewrite script using functions and the workflow will follow from it
@@ -104,7 +106,7 @@ if __name__ == "__main__":
     df.dtypes
     df.memory_usage()
     
-    meas_persite_count = df.monitoringSiteIdentifier.value_counts()
+    site_counts = df.monitoringSiteIdentifier.value_counts()
     target_counts = df.observedPropertyDeterminandLabel.value_counts()
     
     # ------------------
@@ -115,8 +117,8 @@ if __name__ == "__main__":
     # Are there NaNs in df sites? => No
     df.monitoringSiteIdentifier.isnull().sum()
     # Which sites in df are not listed in spatial? => 244 sites
-    mask = meas_persite_count.index.isin(spatial.monitoringSiteIdentifier)
-    sites_unmatch = meas_persite_count.index[~mask]
+    mask = site_counts.index.isin(spatial.monitoringSiteIdentifier)
+    sites_unmatch = site_counts.index[~mask]
     
     # Are there NaNs in spatial? => Yes
     spatial.monitoringSiteIdentifier.isnull().sum()
@@ -142,12 +144,11 @@ if __name__ == "__main__":
                       "metadata_observationStatus"], as_index=False).size()
     
     # No of measurement per site, water body, river basin district (with names)
-    site_counts = dfm.monitoringSiteIdentifier.value_counts()
-    wbody_counts = dfm.waterBodyIdentifier.value_counts()
-    rbdIdent_counts = dfm.rbdIdentifier.value_counts()
-    site_name_counts = dfm.monitoringSiteName.value_counts()
-    wbody_name_counts = dfm.waterBodyName.value_counts()
-    rbdIdent_name_counts = dfm.rbdName.value_counts()
+    wbody_counts = df.parameterWaterBodyCategory.value_counts()
+    rbdIdent_counts = df.rbdIdentifier.value_counts()
+    site_name_counts = df.monitoringSiteName.value_counts()
+    wbody_name_counts = df.waterBodyName.value_counts()
+    rbdIdent_name_counts = df.rbdName.value_counts()
     print("There are {} monitoring sites".format(site_counts.shape[0]))
     print("There are {} monitoring site names".format(site_name_counts.shape[0]))
     print("There are {} water bodies".format(wbody_counts.shape[0]))
@@ -156,7 +157,7 @@ if __name__ == "__main__":
     print("There are {} river basin districts names".format(rbdIdent_name_counts.shape[0]))
     
     # Is there any measurement with no associated river basin disctict? => No
-    dfm.rbdIdentifier.isnull().any()
+    df.rbdIdentifier.isnull().any()
     
     # check if targets have more than one associated measuring unit. => Problem with 2 targets
     # Chloride	['mg/L' 'mmol/L']	2
@@ -170,8 +171,8 @@ if __name__ == "__main__":
     pd.unique(df.resultUom).shape
     
     # date of first and last measurement
-    min(dfm.phenomenonTimeSamplingDate)
-    max(dfm.phenomenonTimeSamplingDate)
+    min(df.phenomenonTimeSamplingDate)
+    max(df.phenomenonTimeSamplingDate)
     
     # how many NAs? 4887 NAs in result value (2%)
     print("There are {} empty result values, i.e. {}% of all results"

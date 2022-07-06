@@ -96,10 +96,11 @@ if __name__ == "__main__":
     path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets".replace("\\", "/")
     os.chdir(path)
     
-    df = pd.read_pickle("WISE/Data_EU_disaggregated_colFiltered.pkl")
+    # df = pd.read_pickle("WISE/Data_EU_disaggregated_colFiltered.pkl")
+    dfm = pd.read_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
     
     
-    # %% DATA PREP
+    # %% DATA INVESTIGATION
     # ------------------
     # General info
     # ------------------
@@ -120,22 +121,43 @@ if __name__ == "__main__":
     mask = site_counts.index.isin(spatial.monitoringSiteIdentifier)
     sites_unmatch = site_counts.index[~mask]
     
-    # Are there NaNs in spatial? => Yes
+    # Are there NaNs in spatial? => Yes, 1631
     spatial.monitoringSiteIdentifier.isnull().sum()
     # Are there duplicates in spatial sites? => Yes
-    # due to different monitoringSiteIdentifierScheme (the euMonitoringSiteCode has lat and lon, not the other)
+    # due to different monitoringSiteIdentifierScheme (the euMonitoringSiteCode has lat and lon, not the other) and NAs
     sum(spatial.monitoringSiteIdentifier.duplicated(), )
-    mask = spatial.monitoringSiteIdentifier.duplicated()
-    sites_duplicated = spatial.monitoringSiteIdentifier.dropna()[mask].reset_index(drop=True)
+    mask = spatial.monitoringSiteIdentifier.duplicated(keep=False)
+    sites_duplicated = spatial[mask].reset_index(drop=True)
+    sites_idscheme = spatial.monitoringSiteIdentifierScheme.value_counts()
+    sites_duplicated_idscheme = sites_duplicated.monitoringSiteIdentifierScheme.value_counts()
+    
+    
+    # %% DATA PREP
+    # ------------------
+    # Purge df and spatial from unclear data and merge
+    # ------------------
+    """spatial:
+        - remove all NAs site IDs
+        - remove duplicates (keep in priority sites with euMonitoringSiteCode scheme)"""
+    spatial_trim = spatial.dropna(subset = ["monitoringSiteIdentifier"])
+    spatial_trim = spatial_trim.astype({'monitoringSiteIdentifier':'string', 'countryCode':'category', 'rbdName':'category'})
+    mask = spatial_trim.monitoringSiteIdentifier.duplicated(keep=False)
+    spatial_nondup = spatial_trim[~mask]
+    spatial_dup = spatial_trim[mask]
+    spatial_dup.sort_values(by='monitoringSiteIdentifierScheme', ascending= False, inplace=True)
+    spatial_dup.drop_duplicates(subset=["monitoringSiteIdentifier"], inplace=True)
+    spatial_trim = pd.concat([spatial_nondup, spatial_dup])[['monitoringSiteIdentifier','countryCode', 'rbdName']]
+    
+    df = df.loc[df.monitoringSiteIdentifier.isin(spatial.monitoringSiteIdentifier)].reset_index(drop=True)
+    
+    dfm = pd.merge(df, spatial_trim, how='left', on='monitoringSiteIdentifier').reset_index(drop=True)
+    dfm.to_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
     
     
     # %% DATA EXPLORATION
     # ------------------
     # Specific questions
     # ------------------
-    # sites with target Ibuprofene
-    site_ibu = df.loc[df.observedPropertyDeterminandLabel ==
-                      "Ibuprofen", "monitoringSiteIdentifier"].value_counts()
     
     # check counts for results above/below LOQ against
     # metadata_observation status (A: Normal record;U: Record with lower reliability;V: Unvalidated record)

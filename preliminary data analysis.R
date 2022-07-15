@@ -268,6 +268,7 @@ km_clust_a3 <- km_out_a3$cluster
 ## Step 3: Creating a visualization to evaluate the clustering along the first 2 PCA dimensions
 ### Approach 1: site average; optimal number of clusters k =
 fviz_cluster(list(data=data_a1, cluster = km_clust_a1))
+fviz_pca_biplot(data_a1, axes = c(1,2), repel = T)
 ### Approach 1: site average; optimal number of clusters k =
 fviz_cluster(list(data=data_a2, cluster = km_clust_a2))
 ### Approach 1: site average; optimal number of clusters k =

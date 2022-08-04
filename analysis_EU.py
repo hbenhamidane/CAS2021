@@ -11,11 +11,15 @@ Data sources:
 2021 WISE dataset (disaggregated data, aggregated data, spatial data):
     https://www.eea.europa.eu/data-and-maps/data/waterbase-water-quality-icm-2
 
+TO DO:
+    - check completion of data
+
 TO DO for classification analysis:
     - check which parameters are common to all sites or to all waterbody types
 
     
 TO DO for time traces analysis:    
+    - read dates from original csv file as strings and convert to datetime before saving pickle file
     - plot time traces
     - find interesting questions to answer
         + is there a pattern in terms of metal pollution?
@@ -95,14 +99,19 @@ def load_csv_disaggregated_data(save=False) -> pd.DataFrame:
                   "parameterWaterBodyCategory": "category",
                   "observedPropertyDeterminandLabel": "category",
                   "resultUom": "category",
-                  "phenomenonTimeSamplingDate": "int32",
+                  "phenomenonTimeSamplingDate": "str",
                   "resultObservedValue": "float32",
                   "resultQualityObservedValueBelowLOQ": "boolean",
                   "parameterSpecies": "category",
                   "resultObservationStatus": "category"}
-
-    df = pd.read_csv("WISE/Waterbase_v2021_1_T_WISE6_DisaggregatedData.csv",
+    df1 = pd.read_csv("WISE/Waterbase_v2021_1_T_WISE6_DisaggregatedData.csv",
                      usecols=list(data_types.keys()), dtype=data_types)
+    df2 = pd.read_csv("WISE/Waterbase_v2021_2_T_WISE6_DisaggregatedData.csv",
+                     usecols=list(data_types.keys()), dtype=data_types)
+    # df = 
+    
+    df["phenomenonTimeSamplingDate"] = pd.to_datetime(df["phenomenonTimeSamplingDate"], format='%Y%m%d')
+    
     if save == True:
         df.to_pickle("WISE/Data_EU_disaggregated_colFiltered.pkl")
     return df
@@ -146,6 +155,7 @@ def load_csv_aggregated_data(save=False) -> pd.DataFrame:
                   "resultQualityMedianBelowLOQ": "boolean",
                   "resultMedianValue": float_type,
                   "resultStandardDeviationValue": float_type,
+                  "parameterSampleDepth": float_type,
                   "metadata_observationStatus": "category"}
     df = pd.read_csv("WISE/Waterbase_v2021_1_T_WISE6_AggregatedData.csv",
                      usecols=list(data_types.keys()), dtype=data_types)
@@ -188,10 +198,12 @@ def investigate_data(df):
 
 def prep_data(df, spatial):
     """
-    Purge df and spatial from unclear data and merge
+    Purge df (dsaggregated data) and spatial from unclear data and merge
     spatial:
-        - remove all NAs site IDs
-        - remove duplicates (keep in priority sites with euMonitoringSiteCode scheme)
+        - remove all NAs site IDs in spatial
+        - remove duplicated sites in spatial (keep in priority sites with euMonitoringSiteCode scheme)
+    result:
+        - 60'171 rows are removed from df to create dfm (0.1% of rows in df)
     """
     spatial_trim = spatial.dropna(subset=["monitoringSiteIdentifier"])
     spatial_trim = spatial_trim.astype(
@@ -212,71 +224,15 @@ def prep_data(df, spatial):
     dfm = pd.merge(df, spatial_trim, how='left',
                    on='monitoringSiteIdentifier').reset_index(drop=True)
     dfm.to_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
+    
+    return dfm
 
 
-def explore_data():
-    """unused at the moment"""
-    # ------------------
-    # Specific questions
-    # ------------------
-
-    # check counts for results above/below LOQ against
-    # metadata_observation status (A: Normal record;U: Record with lower reliability;V: Unvalidated record)
-    # metatdata_statusCode (experimental, stable, valid)
-    test = df.groupby(["resultQualityObservedValueBelowLOQ", "metadata_statusCode",
-                      "metadata_observationStatus"], as_index=False).size()
-
-    # No of measurement per site, water body, river basin district (with names)
-    wbody_counts = df.parameterWaterBodyCategory.value_counts()
-    rbdIdent_counts = df.rbdIdentifier.value_counts()
-    site_name_counts = df.monitoringSiteName.value_counts()
-    wbody_name_counts = df.waterBodyName.value_counts()
-    rbdIdent_name_counts = df.rbdName.value_counts()
-    print("There are {} monitoring sites".format(site_counts.shape[0]))
-    print("There are {} monitoring site names".format(
-        site_name_counts.shape[0]))
-    print("There are {} water bodies".format(wbody_counts.shape[0]))
-    print("There are {} water bodies names".format(wbody_name_counts.shape[0]))
-    print("There are {} river basin districts".format(
-        rbdIdent_counts.shape[0]))
-    print("There are {} river basin districts names".format(
-        rbdIdent_name_counts.shape[0]))
-
-    # Is there any measurement with no associated river basin disctict? => No
-    df.rbdIdentifier.isnull().any()
-
-    # check if targets have more than one associated measuring unit. => Problem with 2 targets
-    # Chloride	['mg/L' 'mmol/L']	2
-    # Dissolved oxygen	['mg/L' 'mg{O2}/L']	2
-    # Phosphate	['mg{P}/L' 'mg{PO4}/L']	2
-    target_uom = df.groupby('observedPropertyDeterminandLabel')[
-        'resultUom'].unique()
-    target_uom_count = df.groupby('observedPropertyDeterminandLabel')[
-        'resultUom'].nunique()
-    target_uom_mult = pd.merge(
-        target_uom, target_uom_count, how='left', on='observedPropertyDeterminandLabel')
-    target_uom_mult = target_uom_mult[target_uom_mult.resultUom_y > 1]
-    pd.unique(df.observedPropertyDeterminandLabel).shape
-    pd.unique(df.resultUom).shape
-
-    # date of first and last measurement
-    min(df.phenomenonTimeSamplingDate)
-    max(df.phenomenonTimeSamplingDate)
-
-    # how many NAs? 4887 NAs in result value (2%)
-    print("There are {} empty result values, i.e. {}% of all results"
-          .format(np.sum(df.resultObservedValue.isna()), np.sum(df.resultObservedValue.isna()) / df.shape[0] * 100))
-
+def find_time_traces(df_agg, thresh_samples_per_year=100, thresh_sites_per_target=10) -> pd.DataFrame:
     """
-    potential interesting targets
-    Oxygen saturation: for fauna
-    MCPA is a herbicide
-    What is MTBE, AOX, NTA?
-    """
-
-
-def find_time_traces(df_agg, thresh_samples_per_year=100, thresh_sites_per_targer=10) -> pd.DataFrame:
-    """
+    Computes a summary of intersting sites, targets, and years for time-trace analysis.
+    Returns a pivot table from filtered aggregated data.
+    
     - filter out:
         + records with low reliability
         + sites not listed in spatial
@@ -300,11 +256,9 @@ def find_time_traces(df_agg, thresh_samples_per_year=100, thresh_sites_per_targe
     -------
     tt_id : pd.DataFrame
         DataFrame with sites as index and targets as columns.
+    tt_year_id : pd.DataFrame
+        DataFrame with sites and year as index and targets as columns.
     """
-
-    # filtering parameters
-    thresh_samples_per_year = 100
-    thresh_sites_per_target = 10
     
     # filter out results with low reliability
     df_agg = df_agg.loc[df_agg['metadata_observationStatus'] == 'A']
@@ -321,7 +275,7 @@ def find_time_traces(df_agg, thresh_samples_per_year=100, thresh_sites_per_targe
     df_agg = df_agg.loc[df_agg.resultNumberOfSamples>thresh_samples_per_year]
     
     # convert some categorical data into relevant dtypes for further analysis
-    """ This is done now as df_agg has now a much smaller size"""
+    """ This is done at this stage as df_agg has now a much smaller size"""
     df_agg = df_agg.astype({'phenomenonTimeReferenceYear': 'int16',
                    'monitoringSiteIdentifier': 'str',
                    'observedPropertyDeterminandLabel': 'str'})
@@ -329,15 +283,51 @@ def find_time_traces(df_agg, thresh_samples_per_year=100, thresh_sites_per_targe
     # compute table with AT and site identifiers
     df_agg_colFil = df_agg[['monitoringSiteIdentifier', 
                       'observedPropertyDeterminandLabel',
+                      'phenomenonTimeReferenceYear',
                       'resultNumberOfSamples']]
-    tt_id = pd.pivot_table(df_agg_colFil,
+    tt_id_raw = pd.pivot_table(df_agg_colFil,
                           values='resultNumberOfSamples',
                           index='monitoringSiteIdentifier',
                           columns='observedPropertyDeterminandLabel',
                           aggfunc='count')
-    tt_id.dropna(axis=1, thresh=thresh_sites_per_target, inplace=True)
+    tt_id = tt_id_raw.dropna(axis=1, thresh=thresh_sites_per_target)
+    df_agg_colFil_2 = df_agg_colFil[df_agg_colFil.observedPropertyDeterminandLabel.isin(tt_id.columns)]
+    tt_year_id = pd.pivot_table(df_agg_colFil_2,
+                          values='resultNumberOfSamples',
+                          index=['monitoringSiteIdentifier', 'phenomenonTimeReferenceYear'],
+                          columns='observedPropertyDeterminandLabel',
+                          aggfunc='count')
     
-    return tt_id
+    return tt_id, tt_year_id
+
+def select_time_trace(dfm, tt_year_id, site: str, target: str) -> pd.DataFrame:
+    """
+    WEIRD, there is no match in years between the filtered aggregated data and the raw disaggregated data
+
+    Parameters
+    ----------
+    dfm : TYPE
+        DESCRIPTION.
+    tt_year_id : TYPE
+        DESCRIPTION.
+    site : str
+        DESCRIPTION.
+    target : str
+        DESCRIPTION.
+
+    Returns
+    -------
+    tt : TYPE
+        DESCRIPTION.
+
+    """
+    tt_year_id_fil = tt_year_id.loc[site, target].dropna()
+    mask = (dfm["monitoringSiteIdentifier"]==site) #& \
+            # (dfm["observedPropertyDeterminandLabel"]==target) #& \
+            # (dfm["phenomenonTimeSamplingDate"].dt.year.isin(tt_year_id_fil.index))
+    tt = dfm[mask]
+    
+    return tt, tt_year_id_fil
 
 def dump():
     # status and visual aids
@@ -362,7 +352,7 @@ def dump():
     df_agg.sort_values(by='resultNumberOfSamples', axis='index',
                             ascending=False, inplace=True, na_position='last')
     
-    df_agg.shape[0]-df_agg_orig.shape[0]
+    
 
 if __name__ == "__main__":
     # %% LOAD FILES
@@ -372,18 +362,24 @@ if __name__ == "__main__":
         .replace("\\", "/")
     os.chdir(path)
 
+    # FROM CSV
     spatial = pd.read_csv("WISE/Waterbase_v2021_1_S_WISE6_SpatialObject_DerivedData.csv")
+    # df = load_csv_disaggregated_data(save=True)
     # df_agg = load_csv_aggregated_data(save=True)
-
-    # df = pd.read_pickle("WISE/Data_EU_disaggregated_colFiltered.pkl")
-    # dfm = pd.read_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
+    # dfm = prep_data(df, spatial)
+    
+    # FROM PICKLE
+    df = pd.read_pickle("WISE/Data_EU_disaggregated_colFiltered.pkl")
+    dfm = pd.read_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
     df_agg = pd.read_pickle("WISE/Data_EU_aggregated_colFiltered.pkl")
-    #
-
+    
     # %% IDENTIFY BEST CANDIDATES FOR TIME TRACE ANALYSIS
-    tt_id = find_time_traces(df_agg)
+    tt_id, tt_year_id = find_time_traces(df_agg)
     
     # %% PLOT TIME TRACES
+    tt, tt_year_id_fil = select_time_trace(dfm, tt_year_id, site='ES020ESPF004300171', target='Dissolved oxygen')
+    dfm.phenomenonTimeSamplingDate.dt.year.value_counts().plot(kind='bar')
+    plt.xlabel(xlabel, kwargs)
     
     
 

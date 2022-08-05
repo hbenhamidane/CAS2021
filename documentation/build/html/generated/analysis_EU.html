@@ -1,0 +1,271 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>analysis_EU &mdash; Project Water 0.2 documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+  <script type="text/javascript" src="../_static/js/modernizr.min.js"></script>
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../_static/doctools.js"></script>
+    
+    <script type="text/javascript" src="../_static/js/theme.js"></script>
+
+    
+
+  
+  <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="../index.html" class="icon icon-home"> Project Water
+          
+
+          
+          </a>
+
+          
+            
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../api.html">API</a></li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Project Water</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="../index.html">Docs</a> &raquo;</li>
+        
+      <li>analysis_EU</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+            
+            <a href="../_sources/generated/analysis_EU.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <section id="module-analysis_EU">
+<span id="analysis-eu"></span><h1>analysis_EU<a class="headerlink" href="#module-analysis_EU" title="Permalink to this heading">¶</a></h1>
+<p>Created on 28 June 2022</p>
+<p>&#64;author = “Ludovic Le Reste”
+&#64;credits = [“Hisham Ben Hamidane”, “Ludovic Le Reste”]
+&#64;status = “Prototype”</p>
+<p>This scripts loads and analyses the Waterbase WISE 6 database from the European Environment Agency.
+Analysis is for the whole dataset (not limited to Switzerland as previously)
+Data sources:
+2021 WISE dataset (disaggregated data, aggregated data, spatial data):</p>
+<blockquote>
+<div><p><a class="reference external" href="https://www.eea.europa.eu/data-and-maps/data/waterbase-water-quality-icm-2">https://www.eea.europa.eu/data-and-maps/data/waterbase-water-quality-icm-2</a></p>
+</div></blockquote>
+<dl>
+<dt>TO DO:</dt><dd><ul class="simple">
+<li><p>check completion of data</p></li>
+</ul>
+</dd>
+<dt>TO DO for classification analysis:</dt><dd><ul class="simple">
+<li><p>check which parameters are common to all sites or to all waterbody types</p></li>
+</ul>
+</dd>
+<dt>TO DO for time traces analysis:    </dt><dd><ul>
+<li><p>read dates from original csv file as strings and convert to datetime before saving pickle file</p></li>
+<li><p>plot time traces</p></li>
+<li><dl>
+<dt>find interesting questions to answer</dt><dd><ul class="simple">
+<li><p>is there a pattern in terms of metal pollution?</p></li>
+</ul>
+<p>[10:27] Ben Hamidane, Hisham</p>
+</dd>
+</dl>
+</li>
+</ul>
+</dd>
+<dt>Targets of interest from Hisham:</dt><dd><ul class="simple">
+<li><p>Groupe 1: cibles analytiques générales</p></li>
+</ul>
+<p>AT_group1 &lt;- c(“pH”, “Water Temperature”, “Oxygen saturation”, “Electrical conductivity”, “Ammonium”, “Phosphate”, “Nitrate”, “BOD5”)
+- Groupe 2: métaux
+AT_group2 &lt;- c(“Lead and its compounds”, “Copper and its compounds”, “Cadmium and its compounds”, “Zinc and its compounds”,</p>
+</dd>
+</dl>
+<p>               “Nickel and its compounds”, “Arsenic and its compounds”, “Mercury and its compounds”, “Chromium and its compounds”,
+               “Iron and its compounds”)</p>
+<p class="rubric">Functions</p>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">dump</span></code>()</p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">find_time_traces</span></code>(df_agg[, ...])</p></td>
+<td><p>Computes a summary of intersting sites, targets, and years for time-trace analysis.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">investigate_data</span></code>(df)</p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_csv_aggregated_data</span></code>([save])</p></td>
+<td><p><ul class="simple">
+<li><p>load csv aggregated data</p></li>
+</ul>
+</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_csv_disaggregated_data</span></code>([save])</p></td>
+<td><p><ul class="simple">
+<li><p>load csv disaggregated data</p></li>
+</ul>
+</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">prep_data</span></code>(df, spatial)</p></td>
+<td><p>Purge df (dsaggregated data) and spatial from unclear data and merge spatial:     - remove all NAs site IDs in spatial     - remove duplicated sites in spatial (keep in priority sites with euMonitoringSiteCode scheme) result:     - 60'171 rows are removed from df to create dfm (0.1% of rows in df)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">select_time_trace</span></code>(dfm, tt_year_id, site, target)</p></td>
+<td><p>WEIRD, there is no match in years between the filtered aggregated data and the raw disaggregated data</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+
+
+           </div>
+           
+          </div>
+          <footer>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2022, Hisham Ben Hamidane, Ludovic Le Reste
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>

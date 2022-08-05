@@ -40,26 +40,26 @@ __credits__ = ["Hisham Ben Hamidane", "Ludovic Le Reste"]
 __status__ = "Prototype"
 
 # %% PACKAGES
-from collections import Counter
-from imblearn.under_sampling import RandomUnderSampler
-from imblearn.over_sampling import RandomOverSampler
-import umap
-from sklearn.model_selection import train_test_split
-from sklearn.feature_selection import VarianceThreshold
-from sklearn.preprocessing import StandardScaler
-from sklearn import svm
-from sklearn.manifold import TSNE
-from sklearn.decomposition import PCA
-from sklearn.mixture import GaussianMixture
-from sklearn.metrics import silhouette_score
-from sklearn.cluster import KMeans
-from sklearn import metrics
-from scipy import stats
-import statsmodels.api as sm
-import geopandas as gpd
+# from collections import Counter
+# from imblearn.under_sampling import RandomUnderSampler
+# from imblearn.over_sampling import RandomOverSampler
+# import umap
+# from sklearn.model_selection import train_test_split
+# from sklearn.feature_selection import VarianceThreshold
+# from sklearn.preprocessing import StandardScaler
+# from sklearn import svm
+# from sklearn.manifold import TSNE
+# from sklearn.decomposition import PCA
+# from sklearn.mixture import GaussianMixture
+# from sklearn.metrics import silhouette_score
+# from sklearn.cluster import KMeans
+# from sklearn import metrics
+# from scipy import stats
+# import statsmodels.api as sm
+# import geopandas as gpd
 import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
+# import seaborn as sns
+# import numpy as np
 import os
 import pandas as pd
 

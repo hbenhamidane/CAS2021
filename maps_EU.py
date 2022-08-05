@@ -18,7 +18,7 @@ __status__ = "Prototype"
 import os
 import pandas as pd
 import geopandas as gpd
-import sys
+# import sys
 import matplotlib.pyplot as plt
 import folium
     
@@ -42,5 +42,5 @@ if __name__ == "__main__":
     center = sites[['lon', 'lat']].median()
     fmap = folium.Map(location=center)
     
-    site_
+    # site_
     fmap.save("./maps/map.html")

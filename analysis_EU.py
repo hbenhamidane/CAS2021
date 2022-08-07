@@ -90,7 +90,7 @@ def load_csv_disaggregated_data(save=False) -> pd.DataFrame:
     -------
     df : pd.DataFrame
         DataFrame with filtered columns and specified data types to reduce file
-        size from 15 GB to 1.1 GB (with float32; only marginal number of results with >7 significant digits).
+        size from 15 GB to 1.3 GB (with float32; only marginal number of results with >7 significant digits).
 
     """
     # WISE tabular data
@@ -104,11 +104,8 @@ def load_csv_disaggregated_data(save=False) -> pd.DataFrame:
                   "resultQualityObservedValueBelowLOQ": "boolean",
                   "parameterSpecies": "category",
                   "resultObservationStatus": "category"}
-    df1 = pd.read_csv("WISE/Waterbase_v2021_1_T_WISE6_DisaggregatedData.csv",
+    df = pd.read_csv("WISE/Waterbase_v2021_1_T_WISE6_DisaggregatedData.csv",
                      usecols=list(data_types.keys()), dtype=data_types)
-    df2 = pd.read_csv("WISE/Waterbase_v2021_2_T_WISE6_DisaggregatedData.csv",
-                     usecols=list(data_types.keys()), dtype=data_types)
-    # df = 
     
     df["phenomenonTimeSamplingDate"] = pd.to_datetime(df["phenomenonTimeSamplingDate"], format='%Y%m%d')
     
@@ -164,7 +161,7 @@ def load_csv_aggregated_data(save=False) -> pd.DataFrame:
     return df
 
 
-def investigate_data(df):
+def investigate_data(df, spatial):
     # ------------------
     # General info
     # ------------------
@@ -196,7 +193,7 @@ def investigate_data(df):
     sites_duplicated_idscheme = sites_duplicated.monitoringSiteIdentifierScheme.value_counts()
 
 
-def prep_data(df, spatial):
+def prep_data(df, spatial, save=False):
     """
     Purge df (dsaggregated data) and spatial from unclear data and merge
     spatial:
@@ -223,12 +220,14 @@ def prep_data(df, spatial):
 
     dfm = pd.merge(df, spatial_trim, how='left',
                    on='monitoringSiteIdentifier').reset_index(drop=True)
-    dfm.to_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
+    
+    if save == True:
+        dfm.to_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
     
     return dfm
 
 
-def find_time_traces(df_agg, thresh_samples_per_year=100, thresh_sites_per_target=10) -> pd.DataFrame:
+def find_time_traces(df_agg, spatial, thresh_samples_per_year=100, thresh_sites_per_target=10) -> pd.DataFrame:
     """
     Computes a summary of intersting sites, targets, and years for time-trace analysis.
     Returns a pivot table from filtered aggregated data.
@@ -356,30 +355,30 @@ def dump():
 
 if __name__ == "__main__":
     # %% LOAD FILES
-    # path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
-    #     "\\", "/")
-    path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets" \
-        .replace("\\", "/")
+    path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
+        "\\", "/")
+    # path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets" \
+    #     .replace("\\", "/")
     os.chdir(path)
 
     # FROM CSV
     spatial = pd.read_csv("WISE/Waterbase_v2021_1_S_WISE6_SpatialObject_DerivedData.csv")
     # df = load_csv_disaggregated_data(save=True)
     # df_agg = load_csv_aggregated_data(save=True)
-    # dfm = prep_data(df, spatial)
+    # dfm = prep_data(df, spatial, save=True)
     
     # FROM PICKLE
     df = pd.read_pickle("WISE/Data_EU_disaggregated_colFiltered.pkl")
-    dfm = pd.read_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
+    # dfm = pd.read_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
     df_agg = pd.read_pickle("WISE/Data_EU_aggregated_colFiltered.pkl")
     
     # %% IDENTIFY BEST CANDIDATES FOR TIME TRACE ANALYSIS
-    tt_id, tt_year_id = find_time_traces(df_agg)
+    tt_id, tt_year_id = find_time_traces(df_agg, spatial)
     
     # %% PLOT TIME TRACES
-    tt, tt_year_id_fil = select_time_trace(dfm, tt_year_id, site='ES020ESPF004300171', target='Dissolved oxygen')
-    dfm.phenomenonTimeSamplingDate.dt.year.value_counts().plot(kind='bar')
-    plt.xlabel(xlabel, kwargs)
+    # tt, tt_year_id_fil = select_time_trace(dfm, tt_year_id, site='ES020ESPF004300171', target='Dissolved oxygen')
+    # dfm.phenomenonTimeSamplingDate.dt.year.value_counts().plot(kind='bar')
+    # plt.xlabel(xlabel, kwargs)
     
     
 

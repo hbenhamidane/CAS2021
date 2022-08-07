@@ -17,10 +17,41 @@ __status__ = "Prototype"
 
 import os
 import pandas as pd
-import geopandas as gpd
+# import geopandas as gpd
 # import sys
 import matplotlib.pyplot as plt
-import folium
+# import folium
+
+class Human:
+    """Machine builders :-)."""
+
+    race = "Homo sapiens sapiens"
+
+    def __init__(self, name, age, energy):
+        # super().__init__(**kwargs)
+        self.name = name
+        self.age = age
+        self.energy = energy
+
+    # Methods
+    def grow(self, years):
+        """
+        Add years to age of a human.
+
+        Parameters
+        ----------
+        years : years alive
+
+            That would be the age.
+
+        Returns
+        -------
+        age
+
+            This the age the human instance (i.e. a person).
+        """
+        self.age = self.age + years
+        return self.age
     
 if __name__ == "__main__":
     # path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(

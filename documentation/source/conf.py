@@ -27,10 +27,14 @@ release = '0.2'
 
 extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.autosummary',
-              'sphinx_rtd_theme']
+              'sphinx_rtd_theme',
+              'sphinx.ext.napoleon']
 
 templates_path = ['_templates']
 exclude_patterns = []
+
+autosummary_generate = True
+napoleon_google_docstring = False
 
 
 

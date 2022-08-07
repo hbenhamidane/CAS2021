@@ -11,10 +11,10 @@ Data source: **WISE** <https://www.eea.europa.eu/data-and-maps/data/waterbase-wa
 
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
    :caption: Contents:
    
-   api
+   all_modules
    
 
 

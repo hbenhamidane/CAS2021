@@ -260,7 +260,7 @@ def find_time_traces(df_agg, spatial, thresh_samples_per_year=100, thresh_sites_
     """
     
     # filter out results with low reliability
-    df_agg = df_agg.loc[df_agg['metadata_observationStatus'] == 'A']
+    df_agg_fil = df_agg.loc[df_agg['metadata_observationStatus'] == 'A']
 
     # filter out sites that are not in spatial => There are none!!
     df_agg = df_agg.loc[df_agg.monitoringSiteIdentifier.isin(spatial.monitoringSiteIdentifier)]
@@ -283,6 +283,7 @@ def find_time_traces(df_agg, spatial, thresh_samples_per_year=100, thresh_sites_
     df_agg_colFil = df_agg[['monitoringSiteIdentifier', 
                       'observedPropertyDeterminandLabel',
                       'phenomenonTimeReferenceYear',
+                      'parameterSamplingPeriod',
                       'resultNumberOfSamples']]
     tt_id_raw = pd.pivot_table(df_agg_colFil,
                           values='resultNumberOfSamples',
@@ -297,7 +298,7 @@ def find_time_traces(df_agg, spatial, thresh_samples_per_year=100, thresh_sites_
                           columns='observedPropertyDeterminandLabel',
                           aggfunc='count')
     
-    return tt_id, tt_year_id
+    return tt_id, tt_year_id, df_agg_colFil_2
 
 def select_time_trace(dfm, tt_year_id, site: str, target: str) -> pd.DataFrame:
     """
@@ -322,7 +323,7 @@ def select_time_trace(dfm, tt_year_id, site: str, target: str) -> pd.DataFrame:
     """
     tt_year_id_fil = tt_year_id.loc[site, target].dropna()
     mask = (dfm["monitoringSiteIdentifier"]==site) #& \
-            # (dfm["observedPropertyDeterminandLabel"]==target) #& \
+            #(dfm["observedPropertyDeterminandLabel"]==target) #& \
             # (dfm["phenomenonTimeSamplingDate"].dt.year.isin(tt_year_id_fil.index))
     tt = dfm[mask]
     
@@ -351,32 +352,41 @@ def dump():
     df_agg.sort_values(by='resultNumberOfSamples', axis='index',
                             ascending=False, inplace=True, na_position='last')
     
+    # compare year distributions between aggregated and disaggregated data
+    years_agg = df_agg.groupby(by=['phenomenonTimeReferenceYear']).sum()
+    years_disagg = df.phenomenonTimeSamplingDate.dt.year.value_counts().sort_index()
+    years = pd.merge(left=years_agg.resultNumberOfSamples,
+                     right=years_disagg,
+                     how='outer',
+                     left_on='phenomenonTimeReferenceYear',
+                     right_index=True)
+    years.plot(x="phenomenonTimeReferenceYear", y=["resultNumberOfSamples", "phenomenonTimeSamplingDate"], kind="bar")
     
 
 if __name__ == "__main__":
     # %% LOAD FILES
-    path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
-        "\\", "/")
-    # path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets" \
-    #     .replace("\\", "/")
+    # # path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
+    # #     "\\", "/")
+    path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets" \
+        .replace("\\", "/")
     os.chdir(path)
 
-    # FROM CSV
-    spatial = pd.read_csv("WISE/Waterbase_v2021_1_S_WISE6_SpatialObject_DerivedData.csv")
-    # df = load_csv_disaggregated_data(save=True)
-    # df_agg = load_csv_aggregated_data(save=True)
-    # dfm = prep_data(df, spatial, save=True)
+    # # FROM CSV
+    # spatial = pd.read_csv("WISE/Waterbase_v2021_1_S_WISE6_SpatialObject_DerivedData.csv")
+    # # df = load_csv_disaggregated_data(save=True)
+    # # df_agg = load_csv_aggregated_data(save=True)
+    # # dfm = prep_data(df, spatial, save=True)
     
-    # FROM PICKLE
-    df = pd.read_pickle("WISE/Data_EU_disaggregated_colFiltered.pkl")
+    # # FROM PICKLE
+    # df = pd.read_pickle("WISE/Data_EU_disaggregated_colFiltered.pkl")
     # dfm = pd.read_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
-    df_agg = pd.read_pickle("WISE/Data_EU_aggregated_colFiltered.pkl")
+    # df_agg = pd.read_pickle("WISE/Data_EU_aggregated_colFiltered.pkl")
     
     # %% IDENTIFY BEST CANDIDATES FOR TIME TRACE ANALYSIS
-    tt_id, tt_year_id = find_time_traces(df_agg, spatial)
+    tt_id, tt_year_id, df_agg_filtered = find_time_traces(df_agg, spatial)
     
     # %% PLOT TIME TRACES
-    # tt, tt_year_id_fil = select_time_trace(dfm, tt_year_id, site='ES020ESPF004300171', target='Dissolved oxygen')
+    tt, tt_year_id_fil = select_time_trace(df, tt_year_id, site='ES040ESPF000400396_1', target='Electrical conductivity')
     # dfm.phenomenonTimeSamplingDate.dt.year.value_counts().plot(kind='bar')
     # plt.xlabel(xlabel, kwargs)
     

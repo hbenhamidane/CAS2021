@@ -200,7 +200,9 @@ def prep_data(df, spatial, save=False):
         - remove all NAs site IDs in spatial
         - remove duplicated sites in spatial (keep in priority sites with euMonitoringSiteCode scheme)
     result:
-        - 60'171 rows are removed from df to create dfm (0.1% of rows in df)
+        - 60'171 rows are removed from df due to no site match in spatial (0.1% of rows in df)
+        - 8'041 rows are dropped because result value is NA
+        - Added column 'year' (for subsequent aggregation criteria)
     """
     spatial_trim = spatial.dropna(subset=["monitoringSiteIdentifier"])
     spatial_trim = spatial_trim.astype(
@@ -220,6 +222,9 @@ def prep_data(df, spatial, save=False):
 
     dfm = pd.merge(df, spatial_trim, how='left',
                    on='monitoringSiteIdentifier').reset_index(drop=True)
+    dfm.dropna(subset=['resultObservedValue'], inplace=True)
+    
+    dfm['year'] = dfm.phenomenonTimeSamplingDate .dt.year
     
     if save == True:
         dfm.to_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
@@ -299,9 +304,10 @@ def find_time_traces(df_agg, spatial, thresh_samples_per_year=100, thresh_sites_
     
     return tt_id, tt_year_id
 
-def select_time_trace(dfm, tt_year_id, site: str, target: str) -> pd.DataFrame:
+def select_time_trace(dfm, tt_id_year, site: str, target: str) -> pd.DataFrame:
     """
-    WEIRD, there is no match in years between the filtered aggregated data and the raw disaggregated data
+    *** function unused since WISE aggregated data does not match disaggregated data :-( !!! ***
+    simply filters disaggregated data based on site, target, and year
 
     Parameters
     ----------
@@ -320,13 +326,159 @@ def select_time_trace(dfm, tt_year_id, site: str, target: str) -> pd.DataFrame:
         DESCRIPTION.
 
     """
-    tt_year_id_fil = tt_year_id.loc[site, target].dropna()
-    mask = (dfm["monitoringSiteIdentifier"]==site) #& \
-            # (dfm["observedPropertyDeterminandLabel"]==target) #& \
-            # (dfm["phenomenonTimeSamplingDate"].dt.year.isin(tt_year_id_fil.index))
+    tt_id_year_fil = tt_id_year.loc[site, target].dropna()
+    mask = (dfm["monitoringSiteIdentifier"]==site) & \
+            (dfm["observedPropertyDeterminandLabel"]==target) & \
+            (dfm["phenomenonTimeSamplingDate"].dt.year.isin(tt_id_year_fil.index))
     tt = dfm[mask]
     
-    return tt, tt_year_id_fil
+    return tt, tt_id_year_fil
+
+
+def aggregate(df, groups: list, save=False) -> pd.DataFrame:
+    """
+    "C'est marqué dessus comme le port-salut"
+    
+    Aggregates raw data based on groups
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Disaggregated data.
+    groups : list
+        list of columns to group.
+    save : Boolean, optional
+        Saves the output as a pickle file. The default is False.
+
+    Returns
+    -------
+    df_agg : TYPE
+        DESCRIPTION.
+
+    """
+
+    df_agg = df.groupby(by=groups, observed=True) \
+        .agg({'resultObservedValue': ['count', 'mean', 'std'],
+              'resultQualityObservedValueBelowLOQ': 'sum'})
+        
+    df_agg['resultQualityObservedValueBelowLOQ', 'perc'] = df_agg['resultQualityObservedValueBelowLOQ', 'sum'] / df_agg['resultObservedValue', 'count'] * 100
+    df_agg.sort_values(by=('resultObservedValue', 'count'), ascending=False, inplace=True)
+    df_agg.columns = ["_".join(a) for a in df_agg.columns.to_flat_index()]
+             
+    if save == True:
+        df_agg.to_pickle("WISE/Data_EU_aggregated_custom_from_disaggregated.pkl")
+        
+    return df_agg
+
+
+def find_time_traces_ca(dfm_agg,
+                        dfm_agg_year,
+                        thresh_LOQ=30,
+                        thresh_samples=300,
+                        thresh_samples_per_year=100,
+                        thresh_sites_per_target=10,
+                        thresh_siteYears_per_target=50):
+    """
+    Computes a summary of intersting sites, targets, and years for time-trace analysis.
+    Takes custom aggregated (hence "_ca" suffix) data as input
+    Returns pivot tables (actually unstacked tables) from filtered aggregated data.
+    
+    - filter out:
+        + results too close to LOQ
+        + time traces with too few points
+    - computes number of results per site, per AT, per year
+    - identify most represented AT for comparison between sites
+        + identifiers: AT, site (,and year)
+        + filter out AT with too few sites meeting criteria
+        + filter out AT='Other chemical parameter' because wtf is that.
+
+    Parameters
+    ----------
+    dfm_agg : TYPE
+        DESCRIPTION.
+    dfm_agg_year : TYPE
+        DESCRIPTION.
+    thresh_LOQ : TYPE, optional
+        DESCRIPTION. The default is 30.
+    thresh_samples : TYPE, optional
+        DESCRIPTION. The default is 300.
+    thresh_samples_per_year : TYPE, optional
+        DESCRIPTION. The default is 100.
+    thresh_sites_per_target : TYPE, optional
+        DESCRIPTION. The default is 10.
+    thresh_sites_per_target : TYPE, optional
+        DESCRIPTION. The default is 10.
+
+    Returns
+    -------
+    tt_id_ca : pd.DataFrame
+        DataFrame with sites as index and targets as columns.
+    tt_id_year_ca : pd.DataFrame
+        DataFrame with sites and year as index and targets as columns.
+
+    """
+    # filter out results too close to LOQ
+    # 11'049'525 ($071%) rows removed for 30% LOQ for dfm_agg_year
+    dfm_agg = dfm_agg[dfm_agg['resultQualityObservedValueBelowLOQ_perc'] < thresh_LOQ]
+    dfm_agg_year = dfm_agg_year[dfm_agg_year['resultQualityObservedValueBelowLOQ_perc'] < thresh_LOQ]
+    
+    # Filter out time traces with too few points
+    dfm_agg = dfm_agg[dfm_agg['resultObservedValue_count'] > thresh_samples]
+    dfm_agg_year = dfm_agg_year[dfm_agg_year['resultObservedValue_count'] > thresh_samples_per_year]
+    
+    # computes the "pivot table"
+    tt_id_ca = dfm_agg['resultObservedValue_count'].unstack(level=1)
+    tt_id_year_ca = dfm_agg_year['resultObservedValue_count'].unstack(level=1)
+    
+    # filter out targets with too few sites or site-year 
+    tt_id_ca = tt_id_ca.dropna(axis=1, thresh=thresh_sites_per_target)
+    tt_id_year_ca = tt_id_year_ca.dropna(axis=1, thresh=thresh_siteYears_per_target)
+    
+    tt_id_ca = tt_id_ca.drop(columns='Other chemical parameter')
+    tt_id_year_ca = tt_id_year_ca.drop(columns='Other chemical parameter')
+    
+    # remove empty rows due to previous column (i.e. target) drops
+    tt_id_ca = tt_id_ca.dropna(axis=0, how='all')
+    tt_id_year_ca = tt_id_year_ca.dropna(axis=0, how='all')
+    
+    return tt_id_ca, tt_id_year_ca
+
+    
+def select_time_trace_ca(dfm, tt_id_year, site: str, target: str) -> pd.DataFrame:
+    """
+    simply filters disaggregated data based on site, target, and year
+
+    Parameters
+    ----------
+    dfm : TYPE
+        DESCRIPTION.
+    tt_year_id : TYPE
+        DESCRIPTION.
+    site : str
+        DESCRIPTION.
+    target : str
+        DESCRIPTION.
+
+    Returns
+    -------
+    tt : TYPE
+        DESCRIPTION.
+
+    """
+    tt_id_year_fil = tt_id_year.loc[site, target].dropna()
+    mask = (dfm["monitoringSiteIdentifier"]==site) & \
+            (dfm["observedPropertyDeterminandLabel"]==target) & \
+            (dfm["year"].isin(tt_id_year_fil.index))
+    tt = dfm[mask]
+    
+    return tt, tt_id_year_fil
+
+def plot_time_traces(tt_id_year, target, ):
+    """TBD:
+        - plot all time traces corresponding to one target in tt_id_year
+        - use slider or button to navigate through time traces as done for ECG project
+        - dates in filtered dfm will probably have to be sorted first"""
+    return None
 
 def dump():
     # status and visual aids
@@ -368,17 +520,35 @@ if __name__ == "__main__":
     # dfm = prep_data(df, spatial, save=True)
     
     # FROM PICKLE
-    df = pd.read_pickle("WISE/Data_EU_disaggregated_colFiltered.pkl")
-    # dfm = pd.read_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
+    # df = pd.read_pickle("WISE/Data_EU_disaggregated_colFiltered.pkl")
+    dfm = pd.read_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
     df_agg = pd.read_pickle("WISE/Data_EU_aggregated_colFiltered.pkl")
+    dfm_agg = pd.read_pickle("WISE/Data_EU_aggregated_custom_from_disaggregated.pkl")
+    dfm_agg_year = pd.read_pickle("WISE/Data_EU_aggregated_custom_perYear_from_disaggregated.pkl")
     
     # %% IDENTIFY BEST CANDIDATES FOR TIME TRACE ANALYSIS
-    tt_id, tt_year_id = find_time_traces(df_agg, spatial)
+    
+    # From WISE aggregated data
+    """This is useless since WISE aggregated data do not match WISE disaggregated data"""
+    # tt_id, tt_year_id = find_time_traces(df_agg, spatial)
+    
+    # From custom-aggregated data
+    dfm_agg = aggregate(dfm, groups=['monitoringSiteIdentifier', 'observedPropertyDeterminandLabel'], 
+                        save=True)
+    dfm_agg_year = aggregate(dfm, groups=['monitoringSiteIdentifier',
+                                          'observedPropertyDeterminandLabel',
+                                          'year'])
+    # dfm_agg_year.to_pickle("WISE/Data_EU_aggregated_custom_perYear_from_disaggregated.pkl")
+    tt_id_ca, tt_id_year_ca = find_time_traces_ca(dfm_agg, dfm_agg_year)
+    
     
     # %% PLOT TIME TRACES
-    # tt, tt_year_id_fil = select_time_trace(dfm, tt_year_id, site='ES020ESPF004300171', target='Dissolved oxygen')
-    # dfm.phenomenonTimeSamplingDate.dt.year.value_counts().plot(kind='bar')
-    # plt.xlabel(xlabel, kwargs)
+    
+    tt, tt_year_id_fil = select_time_trace_ca(dfm, 
+                                              tt_id_year_ca,
+                                              site='PT19E02',
+                                              target='Oxygen saturation')
+    plt.plot(tt.phenomenonTimeSamplingDate, tt.resultObservedValue)
     
     
 

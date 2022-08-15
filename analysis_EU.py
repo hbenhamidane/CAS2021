@@ -472,16 +472,20 @@ def select_time_trace_ca(dfm, tt_id_year, site: str, target: str) -> pd.DataFram
             (dfm["year"].isin(tt_id_year_fil.index))
     tt = dfm[mask]
     
-    return tt, tt_id_year_fil
+    return tt
 
-def plot_time_traces(tt_id_year, target, ):
+def plot_time_traces(tt_id_year, target):
     """TBD:
         - plot all time traces corresponding to one target in tt_id_year
+            + extract all series
         - use slider or button to navigate through time traces as done for ECG project
         - dates in filtered dfm will probably have to be sorted first"""
+        
+    
     return None
 
 def dump():
+    """miscalleneous commands"""
     # status and visual aids
     targets = df_agg.observedPropertyDeterminandLabel.value_counts()
     sites = df_agg.monitoringSiteIdentifier.value_counts()
@@ -517,24 +521,24 @@ def dump():
 
 if __name__ == "__main__":
     # %% LOAD FILES
-    # # path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
-    # #     "\\", "/")
+    # path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
+    #     "\\", "/")
     path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets" \
         .replace("\\", "/")
     os.chdir(path)
 
-    # # FROM CSV
-    # spatial = pd.read_csv("WISE/Waterbase_v2021_1_S_WISE6_SpatialObject_DerivedData.csv")
-    # # df = load_csv_disaggregated_data(save=True)
-    # # df_agg = load_csv_aggregated_data(save=True)
-    # # dfm = prep_data(df, spatial, save=True)
+    # FROM CSV
+    spatial = pd.read_csv("WISE/Waterbase_v2021_1_S_WISE6_SpatialObject_DerivedData.csv")
+    # df = load_csv_disaggregated_data(save=True)
+    # df_agg = load_csv_aggregated_data(save=True)
+    # dfm = prep_data(df, spatial, save=True)
     
     # FROM PICKLE
-    # df = pd.read_pickle("WISE/Data_EU_disaggregated_colFiltered.pkl")
+    df = pd.read_pickle("WISE/Data_EU_disaggregated_colFiltered.pkl")
     dfm = pd.read_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
-    df_agg = pd.read_pickle("WISE/Data_EU_aggregated_colFiltered.pkl")
-    dfm_agg = pd.read_pickle("WISE/Data_EU_aggregated_custom_from_disaggregated.pkl")
-    dfm_agg_year = pd.read_pickle("WISE/Data_EU_aggregated_custom_perYear_from_disaggregated.pkl")
+    # df_agg = pd.read_pickle("WISE/Data_EU_aggregated_colFiltered.pkl")
+    # dfm_agg = pd.read_pickle("WISE/Data_EU_aggregated_custom_from_disaggregated.pkl")
+    # dfm_agg_year = pd.read_pickle("WISE/Data_EU_aggregated_custom_perYear_from_disaggregated.pkl")
     
     # %% IDENTIFY BEST CANDIDATES FOR TIME TRACE ANALYSIS
     
@@ -548,16 +552,17 @@ if __name__ == "__main__":
     dfm_agg_year = aggregate(dfm, groups=['monitoringSiteIdentifier',
                                           'observedPropertyDeterminandLabel',
                                           'year'])
-    # dfm_agg_year.to_pickle("WISE/Data_EU_aggregated_custom_perYear_from_disaggregated.pkl")
+    dfm_agg_year.to_pickle("WISE/Data_EU_aggregated_custom_perYear_from_disaggregated.pkl")
     tt_id_ca, tt_id_year_ca = find_time_traces_ca(dfm_agg, dfm_agg_year)
     
     
     # %% PLOT TIME TRACES
     
-    tt, tt_year_id_fil = select_time_trace_ca(dfm, 
-                                              tt_id_year_ca,
-                                              site='PT19E02',
-                                              target='Oxygen saturation')
+    tt = select_time_trace_ca(dfm,
+                              tt_id_year_ca,
+                              site='PT19E02',
+                              target='Oxygen saturation')
+                                                                           
     plt.plot(tt.phenomenonTimeSamplingDate, tt.resultObservedValue)
     
     

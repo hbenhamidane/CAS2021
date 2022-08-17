@@ -537,22 +537,22 @@ if __name__ == "__main__":
     df = pd.read_pickle("WISE/Data_EU_disaggregated_colFiltered.pkl")
     dfm = pd.read_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
     # df_agg = pd.read_pickle("WISE/Data_EU_aggregated_colFiltered.pkl")
-    # dfm_agg = pd.read_pickle("WISE/Data_EU_aggregated_custom_from_disaggregated.pkl")
-    # dfm_agg_year = pd.read_pickle("WISE/Data_EU_aggregated_custom_perYear_from_disaggregated.pkl")
+    dfm_agg = pd.read_pickle("WISE/Data_EU_aggregated_custom_from_disaggregated.pkl")
+    dfm_agg_year = pd.read_pickle("WISE/Data_EU_aggregated_custom_perYear_from_disaggregated.pkl")
     
     # %% IDENTIFY BEST CANDIDATES FOR TIME TRACE ANALYSIS
     
-    # From WISE aggregated data
-    """This is useless since WISE aggregated data do not match WISE disaggregated data"""
+    # # From WISE aggregated data
+    # """This is useless since WISE aggregated data do not match WISE disaggregated data"""
     # tt_id, tt_year_id = find_time_traces(df_agg, spatial)
     
-    # From custom-aggregated data
-    dfm_agg = aggregate(dfm, groups=['monitoringSiteIdentifier', 'observedPropertyDeterminandLabel'], 
-                        save=True)
-    dfm_agg_year = aggregate(dfm, groups=['monitoringSiteIdentifier',
-                                          'observedPropertyDeterminandLabel',
-                                          'year'])
-    dfm_agg_year.to_pickle("WISE/Data_EU_aggregated_custom_perYear_from_disaggregated.pkl")
+    # # From custom-aggregated data
+    # dfm_agg = aggregate(dfm, groups=['monitoringSiteIdentifier', 'observedPropertyDeterminandLabel'], 
+    #                     save=True)
+    # dfm_agg_year = aggregate(dfm, groups=['monitoringSiteIdentifier',
+    #                                       'observedPropertyDeterminandLabel',
+    #                                       'year'])
+    # dfm_agg_year.to_pickle("WISE/Data_EU_aggregated_custom_perYear_from_disaggregated.pkl")
     tt_id_ca, tt_id_year_ca = find_time_traces_ca(dfm_agg, dfm_agg_year)
     
     

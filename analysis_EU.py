@@ -466,21 +466,45 @@ def select_time_trace_ca(dfm, tt_id_year, site: str, target: str) -> pd.DataFram
         DESCRIPTION.
 
     """
+    
     tt_id_year_fil = tt_id_year.loc[site, target].dropna()
     mask = (dfm["monitoringSiteIdentifier"]==site) & \
             (dfm["observedPropertyDeterminandLabel"]==target) & \
             (dfm["year"].isin(tt_id_year_fil.index))
+                
     tt = dfm[mask]
     
     return tt
 
-def plot_time_traces(tt_id_year, target):
+def prep_plot(tt_id_year, target):
     """TBD:
         - plot all time traces corresponding to one target in tt_id_year
             + extract all series
         - use slider or button to navigate through time traces as done for ECG project
         - dates in filtered dfm will probably have to be sorted first"""
-        
+    # select time traces
+    sites = tt_id_year.loc[:, target].dropna().index.get_level_values(0).unique()
+    tts = select_time_trace_ca(dfm,
+                               tt_id_year,
+                               site='from_target',
+                               target=target)
+                               
+    
+    
+    tt= []
+    for i, el in enumerate(sites):
+        tt.append(select_time_trace_ca(dfm,
+                                     tt_id_year,
+                                     site=el,
+                                     target=target))
+    tt= [select_time_trace_ca(dfm, tt_id_year, site=el, target=target) for el in sites]
+    for i, el in enumerate(sites):
+        tt[i] = select_time_trace_ca(dfm,
+                                     tt_id_year,
+                                     site=el,
+                                     target=target)
+                                     
+                                     
     
     return None
 
@@ -534,7 +558,7 @@ if __name__ == "__main__":
     # dfm = prep_data(df, spatial, save=True)
     
     # FROM PICKLE
-    df = pd.read_pickle("WISE/Data_EU_disaggregated_colFiltered.pkl")
+    # df = pd.read_pickle("WISE/Data_EU_disaggregated_colFiltered.pkl")
     dfm = pd.read_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
     # df_agg = pd.read_pickle("WISE/Data_EU_aggregated_colFiltered.pkl")
     dfm_agg = pd.read_pickle("WISE/Data_EU_aggregated_custom_from_disaggregated.pkl")
@@ -558,7 +582,7 @@ if __name__ == "__main__":
     
     # %% PLOT TIME TRACES
     
-    tt = select_time_trace_ca(dfm,
+    test_tt = select_time_trace_ca(dfm,
                               tt_id_year_ca,
                               site='PT19E02',
                               target='Oxygen saturation')

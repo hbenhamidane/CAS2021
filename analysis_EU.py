@@ -11,19 +11,26 @@ Data sources:
 2021 WISE dataset (disaggregated data, aggregated data, spatial data):
     https://www.eea.europa.eu/data-and-maps/data/waterbase-water-quality-icm-2
 
-TO DO:
-    - check completion of data
 
 TO DO for classification analysis:
     - check which parameters are common to all sites or to all waterbody types
-
-    
+   
 TO DO for time traces analysis:    
     - read dates from original csv file as strings and convert to datetime before saving pickle file
     - plot time traces
     - find interesting questions to answer
-        + is there a pattern in terms of metal pollution?
-        [10:27] Ben Hamidane, Hisham
+        + maybe for Electrical conductivity, but results are more interesting to show:
+            - annual variation
+            - depth variation
+
+TO DO for mapping:
+    - create map of all sites including
+        + label color with water type
+        + label details with site identifier, river body name, etc.
+        
+TO DO for documentation:
+    - get detailed doc on functions using Sphinx
+    - troubleshoot doc update on ReadTheDoc (or just import at the end)
 
 Targets of interest from Hisham:
     - Groupe 1: cibles analytiques générales
@@ -59,9 +66,12 @@ __status__ = "Prototype"
 # import geopandas as gpd
 import matplotlib.pyplot as plt
 # import seaborn as sns
-# import numpy as np
+import numpy as np
 import os
 import pandas as pd
+from matplotlib.widgets import Slider
+import matplotlib.dates as mdates
+import matplotlib.colors as mcol
 
 
 
@@ -102,7 +112,7 @@ def load_csv_disaggregated_data(save=False) -> pd.DataFrame:
                   "phenomenonTimeSamplingDate": "str",
                   "resultObservedValue": "float32",
                   "resultQualityObservedValueBelowLOQ": "boolean",
-                  "parameterSpecies": "category",
+                  "parameterSampleDepth": "float32",
                   "resultObservationStatus": "category"}
     df = pd.read_csv("WISE/Waterbase_v2021_1_T_WISE6_DisaggregatedData.csv",
                      usecols=list(data_types.keys()), dtype=data_types)
@@ -476,37 +486,20 @@ def select_time_trace_ca(dfm, tt_id_year, site: str, target: str) -> pd.DataFram
     
     return tt
 
-def prep_plot(tt_id_year, target):
-    """TBD:
-        - plot all time traces corresponding to one target in tt_id_year
-            + extract all series
-        - use slider or button to navigate through time traces as done for ECG project
-        - dates in filtered dfm will probably have to be sorted first"""
-    # select time traces
-    sites = tt_id_year.loc[:, target].dropna().index.get_level_values(0).unique()
-    tts = select_time_trace_ca(dfm,
-                               tt_id_year,
-                               site='from_target',
-                               target=target)
-                               
+def prep_plot(dfm, tt_id_year, target):
+    """N.B.: generating a MultiIndex (site, year) is much faster than .apply(isin())"""
+    site_year_filter = tt_id_year.loc[:, target].dropna().index
+    tts = dfm[dfm["observedPropertyDeterminandLabel"]==target]
+    site_year = pd.MultiIndex.from_frame(tts[['monitoringSiteIdentifier', 'year']])
+    tts = tts[site_year.isin(site_year_filter)]
     
-    
-    tt= []
+    sites = site_year_filter.get_level_values(0).unique()
+    tts_per_site = []
     for i, el in enumerate(sites):
-        tt.append(select_time_trace_ca(dfm,
-                                     tt_id_year,
-                                     site=el,
-                                     target=target))
-    tt= [select_time_trace_ca(dfm, tt_id_year, site=el, target=target) for el in sites]
-    for i, el in enumerate(sites):
-        tt[i] = select_time_trace_ca(dfm,
-                                     tt_id_year,
-                                     site=el,
-                                     target=target)
-                                     
-                                     
-    
-    return None
+        tts_per_site.append(tts[tts.monitoringSiteIdentifier == sites[i]]
+                            .sort_values(by='phenomenonTimeSamplingDate'))
+                                 
+    return tts, tts_per_site
 
 def dump():
     """miscalleneous commands"""
@@ -545,10 +538,10 @@ def dump():
 
 if __name__ == "__main__":
     # %% LOAD FILES
-    # path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
-    #     "\\", "/")
-    path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets" \
-        .replace("\\", "/")
+    path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
+        "\\", "/")
+    # path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets" \
+    #     .replace("\\", "/")
     os.chdir(path)
 
     # FROM CSV
@@ -564,6 +557,8 @@ if __name__ == "__main__":
     dfm_agg = pd.read_pickle("WISE/Data_EU_aggregated_custom_from_disaggregated.pkl")
     dfm_agg_year = pd.read_pickle("WISE/Data_EU_aggregated_custom_perYear_from_disaggregated.pkl")
     
+    
+    
     # %% IDENTIFY BEST CANDIDATES FOR TIME TRACE ANALYSIS
     
     # # From WISE aggregated data
@@ -577,17 +572,138 @@ if __name__ == "__main__":
     #                                       'observedPropertyDeterminandLabel',
     #                                       'year'])
     # dfm_agg_year.to_pickle("WISE/Data_EU_aggregated_custom_perYear_from_disaggregated.pkl")
-    tt_id_ca, tt_id_year_ca = find_time_traces_ca(dfm_agg, dfm_agg_year)
+    tt_id, tt_id_year = find_time_traces_ca(dfm_agg, dfm_agg_year)
     
     
-    # %% PLOT TIME TRACES
+    # %% PREP FOR PLOTS
+    """Nota Bene:
+        - Electrical conductivity has many different sampling depths
+            + color data points with sample depth value
+        - Conductivity seem to go throuh yearly cycles. INTERESTING !!
+        - tt_pH[24] is taken in 1973-1974 and is an exception
+        - tt_pH[0] there is A LOT of results taken the same day (30 per day on average...)"""
+        
+    target = 'Electrical conductivity'
+    units = dfm.loc[dfm["observedPropertyDeterminandLabel"]==target, "resultUom"].unique()
+    tts, tts_per_site = prep_plot(dfm, tt_id_year, target=target)
     
-    test_tt = select_time_trace_ca(dfm,
-                              tt_id_year_ca,
-                              site='PT19E02',
-                              target='Oxygen saturation')
+    
+    
+    # %% PLOT - line plots
+    # """to be done with a slide"""
+    # for i in range(3):
+    #     tts_per_site[i].plot(x='phenomenonTimeSamplingDate', y='resultObservedValue')
+    
+    # # test_tt = select_time_trace_ca(dfm,
+    # #                           tt_id_year_ca,
+    # #                           site='PT19E02',
+    # #                           target='Oxygen saturation')
                                                                            
-    plt.plot(tt.phenomenonTimeSamplingDate, tt.resultObservedValue)
+    # # plt.plot(tts.phenomenonTimeSamplingDate, tts.resultObservedValue)
+    
+    
+    # n_rows = 4
+    # n_cols = 1
+    # n_plots = n_rows * n_cols
+    # fig, axs = plt.subplots(nrows=n_rows, ncols=n_cols) #, sharey=True
+    # plt.get_current_fig_manager().window.state('zoomed')
+    # plt.subplots_adjust(top=0.90)
+
+    # # inititate plot lines (ls_xxx) that will later be updated by the slider
+    # ls_data = []
+
+    # for i, ax in enumerate(axs.flat):
+    #     ls_data.append(ax.plot(tts_per_site[i]['phenomenonTimeSamplingDate'], 
+    #                            tts_per_site[i]['resultObservedValue']))
+
+    # ax_slider = plt.axes([0.25, 0.95, 0.65, 0.03])
+    # slider_packet = Slider(ax=ax_slider,
+    #                        label='Test packet',
+    #                        valmin=0,
+    #                        valmax=len(tts_per_site)-n_plots,
+    #                        valstep=n_plots,
+    #                        valinit=0)
+
+    # def update_slider(val):
+    #     for i in np.arange(n_plots):
+    #         ls_data[i][0].set_data(tts_per_site[i+val]['phenomenonTimeSamplingDate'],
+    #                                 tts_per_site[i+val]['resultObservedValue'])
+
+            
+    # slider_packet.on_changed(update_slider)
+    
+    # %% PLOT 2 - scatter plots
+    """I think it is a bit buggy since there are time traces with 100+ points that I do not see"""
+  
+   # fig, axs = plt.subplots(2,2)  
+   # for i in range(4):
+   #       # plt.figure()
+   #       # fig, ax = plt.subplots(2,2)
+   #       axs.flat[i].scatter(tts_per_site[i]['phenomenonTimeSamplingDate'], 
+   #                  tts_per_site[i]['resultObservedValue'])
+   #       # plt.show()
+  
+    n_rows = 4
+    n_cols = 2
+    n_plots = n_rows * n_cols
+    fig, axs = plt.subplots(nrows=n_rows, ncols=n_cols) #, sharey=True
+    plt.get_current_fig_manager().window.state('zoomed')
+    plt.subplots_adjust(top=0.90, bottom=0.05)
+    fig.suptitle(target)
+    
+    # colormap = mcol.ListedColormap('cool')#.reversed()
+    # colormap.get_bad()
+    # colormap.set_bad("black")
+    # colormap = mcol.LinearSegmentedColormap.from_list("Blue-Red-Colormap", ["b", "r"])
+    # colormap.set_bad("black")
+    # colormap = mcol.LinearSegmentedColormap.from_list("Blues", "b")
+    # colormap.set_bad("yellow")
+    
+    ax_slider = plt.axes([0.25, 0.92, 0.65, 0.03])
+    slider_tt = Slider(ax=ax_slider,
+                            label='Time traces',
+                            valmin=0,
+                            valmax=len(tts_per_site)-n_plots,
+                            valstep=n_plots,
+                            valinit=0)
+
+    for i, ax in enumerate(axs.flat):
+        axs.flat[i].scatter(tts_per_site[i]['phenomenonTimeSamplingDate'], 
+                   tts_per_site[i]['resultObservedValue'],
+                    c=tts_per_site[i]['parameterSampleDepth'],
+                    cmap='Blues',
+                    plotnonfinite=True,
+                    edgecolors='black',
+                    linewidths=0.1,
+                    s=10)    
+        ax.xaxis.set_major_locator(mdates.YearLocator())
+        unit = tts_per_site[i].loc[tts_per_site[i]["observedPropertyDeterminandLabel"]==target, "resultUom"].unique().to_numpy()
+        ax.set_ylabel(f"{unit}")
+        ax.text(0.01, 0.04, 
+                f"{tts_per_site[i].monitoringSiteIdentifier.unique()[0]}, {tts_per_site[i].parameterWaterBodyCategory.unique()[0]}",
+                transform=ax.transAxes)
+        
+
+    def update_slider(val):
+        for i, ax in enumerate(axs.flat):
+            ax.clear()
+            ax.scatter(tts_per_site[i+val]['phenomenonTimeSamplingDate'],
+                        tts_per_site[i+val]['resultObservedValue'],
+                        c=tts_per_site[i+val]['parameterSampleDepth'],
+                        cmap='Blues',
+                        plotnonfinite=True,
+                        edgecolors='black',
+                        linewidths=0.1,
+                        s=10)       
+            ax.xaxis.set_major_locator(mdates.YearLocator())
+            unit = tts_per_site[i+val].loc[tts_per_site[i+val]["observedPropertyDeterminandLabel"]==target, "resultUom"].unique().to_numpy()
+            ax.set_ylabel(f"{unit}")
+            ax.text(0.01, 0.04, 
+                    f"{tts_per_site[i+val].monitoringSiteIdentifier.unique()[0]}, {tts_per_site[i+val].parameterWaterBodyCategory.unique()[0]}",
+                    transform=ax.transAxes)
+            
+    slider_tt.on_changed(update_slider)
+    
     
     
 

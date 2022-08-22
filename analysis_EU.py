@@ -538,10 +538,10 @@ def dump():
 
 if __name__ == "__main__":
     # %% LOAD FILES
-    path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
-        "\\", "/")
-    # path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets" \
-    #     .replace("\\", "/")
+    # path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
+    #     "\\", "/")
+    path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets" \
+        .replace("\\", "/")
     os.chdir(path)
 
     # FROM CSV
@@ -553,7 +553,7 @@ if __name__ == "__main__":
     # FROM PICKLE
     # df = pd.read_pickle("WISE/Data_EU_disaggregated_colFiltered.pkl")
     dfm = pd.read_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
-    # df_agg = pd.read_pickle("WISE/Data_EU_aggregated_colFiltered.pkl")
+    df_agg = pd.read_pickle("WISE/Data_EU_aggregated_colFiltered.pkl")
     dfm_agg = pd.read_pickle("WISE/Data_EU_aggregated_custom_from_disaggregated.pkl")
     dfm_agg_year = pd.read_pickle("WISE/Data_EU_aggregated_custom_perYear_from_disaggregated.pkl")
     
@@ -583,7 +583,7 @@ if __name__ == "__main__":
         - tt_pH[24] is taken in 1973-1974 and is an exception
         - tt_pH[0] there is A LOT of results taken the same day (30 per day on average...)"""
         
-    target = 'Electrical conductivity'
+    target = 'pH'
     units = dfm.loc[dfm["observedPropertyDeterminandLabel"]==target, "resultUom"].unique()
     tts, tts_per_site = prep_plot(dfm, tt_id_year, target=target)
     
@@ -647,7 +647,8 @@ if __name__ == "__main__":
     n_cols = 2
     n_plots = n_rows * n_cols
     fig, axs = plt.subplots(nrows=n_rows, ncols=n_cols) #, sharey=True
-    plt.get_current_fig_manager().window.state('zoomed')
+    # plt.get_current_fig_manager().window.state('zoomed')
+    plt.get_current_fig_manager().window.showMaximized()
     plt.subplots_adjust(top=0.90, bottom=0.05)
     fig.suptitle(target)
     

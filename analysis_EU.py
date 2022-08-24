@@ -500,6 +500,7 @@ def prep_plot(dfm, tt_id_year, target):
                             .sort_values(by='phenomenonTimeSamplingDate'))
                                  
     return tts, tts_per_site
+    
 
 def dump():
     """miscalleneous commands"""
@@ -552,8 +553,8 @@ if __name__ == "__main__":
     
     # FROM PICKLE
     # df = pd.read_pickle("WISE/Data_EU_disaggregated_colFiltered.pkl")
+    # df_agg = pd.read_pickle("WISE/Data_EU_aggregated_colFiltered.pkl")
     dfm = pd.read_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
-    df_agg = pd.read_pickle("WISE/Data_EU_aggregated_colFiltered.pkl")
     dfm_agg = pd.read_pickle("WISE/Data_EU_aggregated_custom_from_disaggregated.pkl")
     dfm_agg_year = pd.read_pickle("WISE/Data_EU_aggregated_custom_perYear_from_disaggregated.pkl")
     
@@ -585,66 +586,13 @@ if __name__ == "__main__":
         
     target = 'pH'
     units = dfm.loc[dfm["observedPropertyDeterminandLabel"]==target, "resultUom"].unique()
-    tts, tts_per_site = prep_plot(dfm, tt_id_year, target=target)
-    
-    
-    
-    # %% PLOT - line plots
-    # """to be done with a slide"""
-    # for i in range(3):
-    #     tts_per_site[i].plot(x='phenomenonTimeSamplingDate', y='resultObservedValue')
-    
-    # # test_tt = select_time_trace_ca(dfm,
-    # #                           tt_id_year_ca,
-    # #                           site='PT19E02',
-    # #                           target='Oxygen saturation')
-                                                                           
-    # # plt.plot(tts.phenomenonTimeSamplingDate, tts.resultObservedValue)
-    
-    
-    # n_rows = 4
-    # n_cols = 1
-    # n_plots = n_rows * n_cols
-    # fig, axs = plt.subplots(nrows=n_rows, ncols=n_cols) #, sharey=True
-    # plt.get_current_fig_manager().window.state('zoomed')
-    # plt.subplots_adjust(top=0.90)
+    tts, tts_per_site = prep_plot(dfm, tt_id_year, target=target)   
 
-    # # inititate plot lines (ls_xxx) that will later be updated by the slider
-    # ls_data = []
-
-    # for i, ax in enumerate(axs.flat):
-    #     ls_data.append(ax.plot(tts_per_site[i]['phenomenonTimeSamplingDate'], 
-    #                            tts_per_site[i]['resultObservedValue']))
-
-    # ax_slider = plt.axes([0.25, 0.95, 0.65, 0.03])
-    # slider_packet = Slider(ax=ax_slider,
-    #                        label='Test packet',
-    #                        valmin=0,
-    #                        valmax=len(tts_per_site)-n_plots,
-    #                        valstep=n_plots,
-    #                        valinit=0)
-
-    # def update_slider(val):
-    #     for i in np.arange(n_plots):
-    #         ls_data[i][0].set_data(tts_per_site[i+val]['phenomenonTimeSamplingDate'],
-    #                                 tts_per_site[i+val]['resultObservedValue'])
-
-            
-    # slider_packet.on_changed(update_slider)
     
-    # %% PLOT 2 - scatter plots
-    """I think it is a bit buggy since there are time traces with 100+ points that I do not see"""
-  
-   # fig, axs = plt.subplots(2,2)  
-   # for i in range(4):
-   #       # plt.figure()
-   #       # fig, ax = plt.subplots(2,2)
-   #       axs.flat[i].scatter(tts_per_site[i]['phenomenonTimeSamplingDate'], 
-   #                  tts_per_site[i]['resultObservedValue'])
-   #       # plt.show()
-  
-    n_rows = 4
-    n_cols = 2
+    # %% PLOT - scatter plots Matplotlib
+    """ to be run with @matplotlib auto"""
+    n_rows=4
+    n_cols=2
     n_plots = n_rows * n_cols
     fig, axs = plt.subplots(nrows=n_rows, ncols=n_cols) #, sharey=True
     # plt.get_current_fig_manager().window.state('zoomed')
@@ -670,7 +618,7 @@ if __name__ == "__main__":
 
     for i, ax in enumerate(axs.flat):
         axs.flat[i].scatter(tts_per_site[i]['phenomenonTimeSamplingDate'], 
-                   tts_per_site[i]['resultObservedValue'],
+                    tts_per_site[i]['resultObservedValue'],
                     c=tts_per_site[i]['parameterSampleDepth'],
                     cmap='Blues',
                     plotnonfinite=True,
@@ -683,8 +631,7 @@ if __name__ == "__main__":
         ax.text(0.01, 0.04, 
                 f"{tts_per_site[i].monitoringSiteIdentifier.unique()[0]}, {tts_per_site[i].parameterWaterBodyCategory.unique()[0]}",
                 transform=ax.transAxes)
-        
-
+    
     def update_slider(val):
         for i, ax in enumerate(axs.flat):
             ax.clear()
@@ -702,8 +649,9 @@ if __name__ == "__main__":
             ax.text(0.01, 0.04, 
                     f"{tts_per_site[i+val].monitoringSiteIdentifier.unique()[0]}, {tts_per_site[i+val].parameterWaterBodyCategory.unique()[0]}",
                     transform=ax.transAxes)
-            
+        
     slider_tt.on_changed(update_slider)
+    
     
     
     

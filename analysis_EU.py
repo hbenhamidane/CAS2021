@@ -84,6 +84,41 @@ InteractiveShell.ast_node_interactivity = "all"
 # %% FUNCTONS
 
 
+def dump():
+    """miscalleneous commands"""
+    # status and visual aids
+    targets = df_agg.observedPropertyDeterminandLabel.value_counts()
+    sites = df_agg.monitoringSiteIdentifier.value_counts()
+    n_sites_per_target = df_agg \
+        .groupby(['observedPropertyDeterminandLabel'], observed=True) \
+        .monitoringSiteIdentifier \
+        .nunique() \
+        .sort_values(ascending=False)
+        
+    df_agg.phenomenonTimeReferenceYear.value_counts().sort_index().plot(kind='bar')
+        
+    targets_id = targets[targets>100]
+    
+    df_agg.loc[df_agg.observedPropertyDeterminandLabel==n_sites_per_target.index[0]] \
+        .monitoringSiteIdentifier \
+        .unique() \
+        .sort_values(ascending=False)
+        
+    df_agg.resultNumberOfSamples.hist(bins=50)
+    df_agg.sort_values(by='resultNumberOfSamples', axis='index',
+                            ascending=False, inplace=True, na_position='last')
+    
+    # compare year distributions between aggregated and disaggregated data
+    years_agg = df_agg.groupby(by=['phenomenonTimeReferenceYear']).sum()
+    years_disagg = df.phenomenonTimeSamplingDate.dt.year.value_counts().sort_index()
+    years = pd.merge(left=years_agg.resultNumberOfSamples,
+                     right=years_disagg,
+                     how='outer',
+                     left_on='phenomenonTimeReferenceYear',
+                     right_index=True)
+    years.plot(x="phenomenonTimeReferenceYear", y=["resultNumberOfSamples", "phenomenonTimeSamplingDate"], kind="bar")
+    
+
 def load_csv_disaggregated_data(save=False) -> pd.DataFrame:
     """
     - load csv disaggregated data
@@ -203,7 +238,7 @@ def investigate_data(df, spatial):
     sites_duplicated_idscheme = sites_duplicated.monitoringSiteIdentifierScheme.value_counts()
 
 
-def prep_data(df, spatial, save=False):
+def merge_data(df, spatial, save=False):
     """
     Purge df (dsaggregated data) and spatial from unclear data and merge
     spatial:
@@ -314,6 +349,7 @@ def find_time_traces(df_agg, spatial, thresh_samples_per_year=100, thresh_sites_
                           aggfunc='count')
     
     return tt_id, tt_year_id, df_agg_colFil_2
+
 
 def select_time_trace(dfm, tt_id_year, site: str, target: str) -> pd.DataFrame:
     """
@@ -486,6 +522,7 @@ def select_time_trace_ca(dfm, tt_id_year, site: str, target: str) -> pd.DataFram
     
     return tt
 
+
 def prep_plot(dfm, tt_id_year, target):
     """N.B.: generating a MultiIndex (site, year) is much faster than .apply(isin())"""
     site_year_filter = tt_id_year.loc[:, target].dropna().index
@@ -502,58 +539,29 @@ def prep_plot(dfm, tt_id_year, target):
     return tts, tts_per_site
     
 
-def dump():
-    """miscalleneous commands"""
-    # status and visual aids
-    targets = df_agg.observedPropertyDeterminandLabel.value_counts()
-    sites = df_agg.monitoringSiteIdentifier.value_counts()
-    n_sites_per_target = df_agg \
-        .groupby(['observedPropertyDeterminandLabel'], observed=True) \
-        .monitoringSiteIdentifier \
-        .nunique() \
-        .sort_values(ascending=False)
-        
-    df_agg.phenomenonTimeReferenceYear.value_counts().sort_index().plot(kind='bar')
-        
-    targets_id = targets[targets>100]
-    
-    df_agg.loc[df_agg.observedPropertyDeterminandLabel==n_sites_per_target.index[0]] \
-        .monitoringSiteIdentifier \
-        .unique() \
-        .sort_values(ascending=False)
-        
-    df_agg.resultNumberOfSamples.hist(bins=50)
-    df_agg.sort_values(by='resultNumberOfSamples', axis='index',
-                            ascending=False, inplace=True, na_position='last')
-    
-    # compare year distributions between aggregated and disaggregated data
-    years_agg = df_agg.groupby(by=['phenomenonTimeReferenceYear']).sum()
-    years_disagg = df.phenomenonTimeSamplingDate.dt.year.value_counts().sort_index()
-    years = pd.merge(left=years_agg.resultNumberOfSamples,
-                     right=years_disagg,
-                     how='outer',
-                     left_on='phenomenonTimeReferenceYear',
-                     right_index=True)
-    years.plot(x="phenomenonTimeReferenceYear", y=["resultNumberOfSamples", "phenomenonTimeSamplingDate"], kind="bar")
-    
+def prep_WB_classification(dfm):
+    """filter sites and targets to output the least bias dataset for classification analysis on water body type
+    - filter out uncertain results (remove 47'607 rows)
+    """
+    dfm = dfm[(dfm.resultObservationStatus=='A') | (dfm.resultObservationStatus.isna())]   
 
 if __name__ == "__main__":
     # %% LOAD FILES
-    # path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
-    #     "\\", "/")
-    path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets" \
-        .replace("\\", "/")
+    path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
+        "\\", "/")
+    # path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets" \
+    #     .replace("\\", "/")
     os.chdir(path)
 
     # FROM CSV
     spatial = pd.read_csv("WISE/Waterbase_v2021_1_S_WISE6_SpatialObject_DerivedData.csv")
     # df = load_csv_disaggregated_data(save=True)
     # df_agg = load_csv_aggregated_data(save=True)
-    # dfm = prep_data(df, spatial, save=True)
+    # dfm = merge_data(df, spatial, save=True)
     
     # FROM PICKLE
-    # df = pd.read_pickle("WISE/Data_EU_disaggregated_colFiltered.pkl")
-    # df_agg = pd.read_pickle("WISE/Data_EU_aggregated_colFiltered.pkl")
+    df = pd.read_pickle("WISE/Data_EU_disaggregated_colFiltered.pkl")
+    df_agg = pd.read_pickle("WISE/Data_EU_aggregated_colFiltered.pkl")
     dfm = pd.read_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
     dfm_agg = pd.read_pickle("WISE/Data_EU_aggregated_custom_from_disaggregated.pkl")
     dfm_agg_year = pd.read_pickle("WISE/Data_EU_aggregated_custom_perYear_from_disaggregated.pkl")
@@ -651,6 +659,10 @@ if __name__ == "__main__":
                     transform=ax.transAxes)
         
     slider_tt.on_changed(update_slider)
+    
+    # %% PREP DATA FOR CLASSIFICATION ANALYSIS
+    
+    
     
     
     

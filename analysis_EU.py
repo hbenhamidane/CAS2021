@@ -65,7 +65,7 @@ __status__ = "Prototype"
 # import statsmodels.api as sm
 # import geopandas as gpd
 import matplotlib.pyplot as plt
-# import seaborn as sns
+import seaborn as sns
 import numpy as np
 import os
 import pandas as pd
@@ -76,8 +76,8 @@ import matplotlib.colors as mcol
 
 
 # %% PACKAGES
-from IPython.core.interactiveshell import InteractiveShell
-InteractiveShell.ast_node_interactivity = "all"
+# from IPython.core.interactiveshell import InteractiveShell
+# InteractiveShell.ast_node_interactivity = "all"
 # from mpl_toolkits.basemap import Basemap
 # import plot_style
 
@@ -269,7 +269,7 @@ def merge_data(df, spatial, save=False):
                    on='monitoringSiteIdentifier').reset_index(drop=True)
     dfm.dropna(subset=['resultObservedValue'], inplace=True)
     
-    dfm['year'] = dfm.phenomenonTimeSamplingDate .dt.year
+    dfm['year'] = dfm.phenomenonTimeSamplingDate.dt.year
     
     if save == True:
         dfm.to_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
@@ -539,32 +539,56 @@ def prep_plot(dfm, tt_id_year, target):
     return tts, tts_per_site
     
 
-def prep_WB_classification(dfm):
+def prep_water_body(dfm):
     """filter sites and targets to output the least bias dataset for classification analysis on water body type
-    - filter out uncertain results (remove 47'607 rows)
+    
+    Filter dfm:
+    - filter out uncertain results from dfm (remove 47'607 rows)
+    - filter out Transitional water (too few measurements: 2843)
     """
-    dfm = dfm[(dfm.resultObservationStatus=='A') | (dfm.resultObservationStatus.isna())]   
+    dfm = dfm[(dfm.resultObservationStatus=='A') | (dfm.resultObservationStatus.isna())]
+    dfm = dfm[dfm.parameterWaterBodyCategory!='TeW']
+    
+    dfm_agg_wb = aggregate(dfm, groups=['parameterWaterBodyCategory',
+                                        'observedPropertyDeterminandLabel'])
+    wb_counts = dfm_agg_wb['resultObservedValue_count'].unstack(level=-1).dropna(axis='columns')
+    wb_counts = wb_counts.loc[:, ~(wb_counts<5000).any()]
 
-if __name__ == "__main__":
+    
+    
+    # dfm_agg_site = aggregate(dfm, groups=['monitoringSiteIdentifier',
+    #                                     'parameterWaterBodyCategory',
+    #                                     'observedPropertyDeterminandLabel'])
+    # dfm_agg_site = dfm_agg_site[dfm_agg_site.resultObservedValue_count >= 10]
+    # dfm_agg_site = dfm_agg_site[dfm_agg_site.resultQualityObservedValueBelowLOQ_perc <= 60]
+    
+    # wb = dfm_agg_wb['resultObservedValue_mean'].unstack(level=2)
+    # wb2 = wb.unstack(level=-1)
+    
+
+
     # %% LOAD FILES
-    path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
-        "\\", "/")
-    # path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets" \
-    #     .replace("\\", "/")
+if __name__ == "__main__":
+    # path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
+    #     "\\", "/")
+    path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets" \
+        .replace("\\", "/")
     os.chdir(path)
 
     # FROM CSV
-    spatial = pd.read_csv("WISE/Waterbase_v2021_1_S_WISE6_SpatialObject_DerivedData.csv")
+    # spatial = pd.read_csv("WISE/Waterbase_v2021_1_S_WISE6_SpatialObject_DerivedData.csv")
     # df = load_csv_disaggregated_data(save=True)
     # df_agg = load_csv_aggregated_data(save=True)
     # dfm = merge_data(df, spatial, save=True)
     
     # FROM PICKLE
-    df = pd.read_pickle("WISE/Data_EU_disaggregated_colFiltered.pkl")
-    df_agg = pd.read_pickle("WISE/Data_EU_aggregated_colFiltered.pkl")
+    # df = pd.read_pickle("WISE/Data_EU_disaggregated_colFiltered.pkl")
+    # df_agg = pd.read_pickle("WISE/Data_EU_aggregated_colFiltered.pkl")
     dfm = pd.read_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
-    dfm_agg = pd.read_pickle("WISE/Data_EU_aggregated_custom_from_disaggregated.pkl")
+    # dfm_agg = pd.read_pickle("WISE/Data_EU_aggregated_custom_from_disaggregated.pkl")
     dfm_agg_year = pd.read_pickle("WISE/Data_EU_aggregated_custom_perYear_from_disaggregated.pkl")
+    
+    """ aggregate October to Mars = winter; and April to September = summer"""
     
     
     

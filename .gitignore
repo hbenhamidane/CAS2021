@@ -4,3 +4,16 @@
 .Ruserdata
 __pycache__
 documentation\_build
+Data_EU_aggregated_custom_from_disaggregated.csv
+WISE EU data after merging with metadata and clean up.csv
+Waterbase_v2021_1_S_WISE6_SpatialObject_DerivedData.csv
+Waterbase_v2021_1_T_WISE6_AggregatedDataByWaterBody.csv
+analysis_EU.py
+analysis_EU.py~16d5e90d9eac54fc080fdfd83b3ab428bc088d73
+analysis_wf.py
+maps_EU.py
+maps_EU.py~16d5e90d9eac54fc080fdfd83b3ab428bc088d73
+Data_EU_aggregated_perSiteTargetSeason_2020.csv
+Data_EU_aggregated_custom_perYear_from_disaggregated.csv
+analysis.py
+maps.py

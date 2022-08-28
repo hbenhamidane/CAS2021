@@ -64,9 +64,9 @@ if __name__ == "__main__":
     
     
     # %% LOAD FILES
-    # path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
-    #     "\\", "/")
-    path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets".replace("\\", "/")
+    path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
+        "\\", "/")
+    # path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets".replace("\\", "/")
     os.chdir(path)
     
     # WISE tabular data
@@ -529,8 +529,8 @@ if __name__ == "__main__":
     '''
     # Option A - select top targets (many sub-options...)
     # targets = target_counts.iloc[:19].index
-    targets = target_perWB_counts.dropna().index
-    # targets = target_perRBD_counts.dropna().index
+    # targets = target_perWB_counts.dropna().index
+    targets = target_perRBD_counts.dropna().index
     # Option B - select specific targets
     # targets = ["Dissolved oxygen", "Electrical conductivity", "Total phosphorus", "pH"]
     

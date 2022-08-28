@@ -5,6 +5,11 @@ Created on Tue Apr 26 13:33:52 2022
 @author: ludovic.lereste
 
 This scripts plots interactive map(s) of waters
+
+TO DO:
+- check map coordinate conversion with function to_crs() instead of manual transformation
+- use ecomorphology map (continuous rivers) instead of typology map
+    + troubleshoot LV03 Vs LV95
 """
 __author__ = "Ludovic Le Reste"
 __credits__ = ["Hisham Ben Hamidane", "Ludovic Le Reste"]

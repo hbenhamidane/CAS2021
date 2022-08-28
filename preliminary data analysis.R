@@ -269,6 +269,7 @@ km_clust_a3 <- km_out_a3$cluster
 ### Approach 1: site average; optimal number of clusters k =
 fviz_cluster(list(data=data_a1, cluster = km_clust_a1))
 fviz_pca_biplot(data_a1, axes = c(1,2), repel = T)
+
 ### Approach 1: site average; optimal number of clusters k = 2
 fviz_cluster(list(data=data_a1, cluster = km_clust_a1), repel = T, show.clust.cent = T, ellipse.alpha = 0.15, ggtheme = theme_classic())
 ### Approach 1: site average; optimal number of clusters k =

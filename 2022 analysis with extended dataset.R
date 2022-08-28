@@ -11,6 +11,7 @@ library(caret)
 library(mclust)
 library(gridExtra)
 
+<<<<<<< HEAD
 ########################################################################################################################################################################################
 ########################################################################################################################################################################################
 ########################################################################################################################################################################################
@@ -20,15 +21,32 @@ setwd("C:/Users/shami/Documents/CAS 2021")
 wd <- getwd()
 na_string <- c("", " ", NA, "NA", "N/A")
 
+=======
+
+# Defining work directory and general variables
+setwd("C:/Users/hisham.benhamidane/OneDrive - Thermo Fisher Scientific/Documents/R/projects/CAS2021/Raw data/2021")
+wd <- getwd()
+na_string <- c("", " ", NA, "NA", "N/A")
+
+
+>>>>>>> 16d5e90d9eac54fc080fdfd83b3ab428bc088d73
 # Reading and cleaning up data
 data <- read.csv("Waterbase_v2021_1_T_WISE6_AggregatedData.csv", header = T, na.strings = na_string)
 ## renaming the 1st column (special char issue)
 colnames(data)[1] <- "monitoringSiteIdentifier"
 ## dropping the useless columns in the data to make it lighter
 data_cols_to_drop <- c( "remarks","metadata_versionId","metadata_beginLifeSpanVersion","metadata_statusCode","metadata_observationStatus",
+<<<<<<< HEAD
                         "metadata_statements", "UID")
 ## and removing rows without site id
 data <- data %>% select(-all_of(data_cols_to_drop)) %>% filter(!is.na(monitoringSiteIdentifier))
+=======
+                        "metadata_statements", "UID"   )
+## and removing rows without site id
+data <- data %>% select(-all_of(data_cols_to_drop)) %>% filter(!is.na(monitoringSiteIdentifier))
+
+
+>>>>>>> 16d5e90d9eac54fc080fdfd83b3ab428bc088d73
 # Reading and cleaning up metadata
 metadata <- read.csv("Waterbase_v2021_1_S_WISE6_SpatialObject_DerivedData.csv", header = T, na.strings = na_string)
 ## renaming the 1st column (special char issue)
@@ -47,6 +65,11 @@ metadata_dup <- metadata %>% group_by(monitoringSiteIdentifier) %>% summarize(si
 metadata <- metadata[!metadata$monitoringSiteIdentifier %in% metadata_dup$monitoringSiteIdentifier,]
 ## Dropping the corresponding sites in data
 data <- data %>% filter(monitoringSiteIdentifier %in% unique(metadata$monitoringSiteIdentifier))
+<<<<<<< HEAD
+=======
+
+
+>>>>>>> 16d5e90d9eac54fc080fdfd83b3ab428bc088d73
 # Left joining data to metadata
 data <- data %>% left_join(metadata, by = "monitoringSiteIdentifier" )
 
@@ -55,9 +78,17 @@ data <- data %>% left_join(metadata, by = "monitoringSiteIdentifier" )
 sum(unique(data$monitoringSiteIdentifier) %in% unique(metadata$monitoringSiteIdentifier))/length(unique(data$monitoringSiteIdentifier))*100
 # [1] 100
 
+<<<<<<< HEAD
 # Removing all non-necessary variables
 rm(meta_cols_to_keep, data_cols_to_drop, metadata, metadata_dup)
 
+=======
+
+# removing all non-necessary variables
+rm(meta_cols_to_keep, data_cols_to_drop, metadata, metadata_dup)
+
+
+>>>>>>> 16d5e90d9eac54fc080fdfd83b3ab428bc088d73
 # Selecting and renaming columns in the merged data 
 data <- data %>% transmute(site = as.factor(monitoringSiteIdentifier),
                            site_name = as.factor(monitoringSiteName),
@@ -78,6 +109,7 @@ data <- data %>% transmute(site = as.factor(monitoringSiteIdentifier),
                            measured_value_sd = as.numeric(resultStandardDeviationValue),
                            measured_value_unit = as.factor(resultUom),
                            sampling_depth = parameterSampleDepth,
+<<<<<<< HEAD
                            meas_period = parameterSamplingPeriod,
                            number_of_samples_below_LOQ = as.numeric(resultQualityNumberOfSamplesBelowLOQ),
                            LOQ_value = as.numeric(procedureLOQValue))
@@ -345,10 +377,34 @@ fviz_pca_biplot(matrix_1w_pca, axes = c(1,2), repel = T)
 
 
 
+=======
+                           number_of_samples_below_LOQ = as.numeric(resultQualityNumberOfSamplesBelowLOQ),
+                           LOQ_value = as.numeric(procedureLOQValue))
+
+
+
+
+# Quick overview of the new dataset
+
+### 1. by country
+View(data %>% group_by(country) %>% summarize(meas_per_country = n()) %>% arrange(desc(meas_per_country)))
+
+### 2. by Water system
+view(data %>% group_by(WB_system_name) %>% summarize(meas_per_WB = n()) %>% arrange(desc(meas_per_WB)))
+
+### 3. by AT
+view(data %>% group_by(AT_name) %>% summarize(meas_per_AT = n()) %>% arrange(desc(meas_per_AT)))
+>>>>>>> 16d5e90d9eac54fc080fdfd83b3ab428bc088d73
 
 
 
 #### Idea: defining AT groups for more meaning full comparisons between sites/countries/WB/years
+<<<<<<< HEAD
+=======
+#### Group 1: usual analysis: pH, T, dissolved Oxygen, Phosphate, Nitrate and Ammonium (alternative to phosphate & nitrate would be total P/N respectively)  
+AT_group1 <- c("pH", "Water Temperature", "Oxygen saturation", "Electrical conductivity", "Ammonium", "Phosphate", "Nitrate", "BOD5")
+data_g1 <- data %>% filter(AT_name %in% AT_group1)
+>>>>>>> 16d5e90d9eac54fc080fdfd83b3ab428bc088d73
 
 #### Group 2: metals
 AT_group2 <- c("Lead and its compounds", "Copper and its compounds", "Cadmium and its compounds", "Zinc and its compounds",
@@ -356,6 +412,7 @@ AT_group2 <- c("Lead and its compounds", "Copper and its compounds", "Cadmium an
                "Iron and its compounds")
 data_g2 <- data %>% filter(AT_name %in% AT_group2)
 
+<<<<<<< HEAD
 
 # Plotting the distribution of measurements below LOQ percentage for the whole dataset
 ggplot(data_g2, aes(x=below_LOQ_perc)) +geom_histogram(stat="bin")
@@ -439,6 +496,8 @@ ggplot(data_g2_A, aes(x=measured_value_mean)) +
 
 
 
+=======
+>>>>>>> 16d5e90d9eac54fc080fdfd83b3ab428bc088d73
 # TEST: retaining only Spain and Austria data (most number of measurements)
 data_g2_f <- data_g2 %>% filter(country == "ES" | country == "AT")
 common_years <- unique(data_g2_f[data_g2_f$country == "ES",]$meas_year)

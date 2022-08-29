@@ -266,6 +266,10 @@ km_out_a3 <- kmeans(data_a3, centers=2, nstart=100)
 km_clust_a3 <- km_out_a3$cluster
 
 ## Step 3: Creating a visualization to evaluate the clustering along the first 2 PCA dimensions
+### Approach 1: site average; optimal number of clusters k =
+fviz_cluster(list(data=data_a1, cluster = km_clust_a1))
+fviz_pca_biplot(data_a1, axes = c(1,2), repel = T)
+
 ### Approach 1: site average; optimal number of clusters k = 2
 fviz_cluster(list(data=data_a1, cluster = km_clust_a1), repel = T, show.clust.cent = T, ellipse.alpha = 0.15, ggtheme = theme_classic())
 ### Approach 1: site average; optimal number of clusters k =
@@ -479,20 +483,6 @@ test_pred <- predict(object = knn_model, newdata = test_x)
 model_values <- data.frame(obs=test_y, pred=test_pred)
 ### Visualizing the confusion matrix and summary statistics
 confusionMatrix(test_pred, test_y)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 #

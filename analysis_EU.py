@@ -50,17 +50,17 @@ __status__ = "Prototype"
 # from collections import Counter
 # from imblearn.under_sampling import RandomUnderSampler
 # from imblearn.over_sampling import RandomOverSampler
-# import umap
-# from sklearn.model_selection import train_test_split
+import umap
+from sklearn.model_selection import train_test_split
 # from sklearn.feature_selection import VarianceThreshold
-# from sklearn.preprocessing import StandardScaler
-# from sklearn import svm
+from sklearn.preprocessing import StandardScaler
+from sklearn import svm
 # from sklearn.manifold import TSNE
-# from sklearn.decomposition import PCA
+from sklearn.decomposition import PCA
 # from sklearn.mixture import GaussianMixture
 # from sklearn.metrics import silhouette_score
 # from sklearn.cluster import KMeans
-# from sklearn import metrics
+from sklearn import metrics
 # from scipy import stats
 # import statsmodels.api as sm
 # import geopandas as gpd
@@ -269,7 +269,20 @@ def merge_data(df, spatial, save=False):
                    on='monitoringSiteIdentifier').reset_index(drop=True)
     dfm.dropna(subset=['resultObservedValue'], inplace=True)
     
-    dfm['year'] = dfm.phenomenonTimeSamplingDate.dt.year
+    dfm['year'] = dfm.phenomenonTimeSamplingDate.dt.year.astype('category')
+    seasons = {1: 'winter',
+               2: 'winter',
+               3: 'winter',
+               4: 'summer',
+               5: 'summer',
+               6: 'summer',
+               7: 'summer',
+               8: 'summer',
+               9: 'summer',
+               10: 'winter',
+               11: 'winter',
+               12: 'winter'}
+    dfm['season'] = dfm.phenomenonTimeSamplingDate.dt.month.map(seasons).astype('category')
     
     if save == True:
         dfm.to_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
@@ -539,40 +552,215 @@ def prep_plot(dfm, tt_id_year, target):
     return tts, tts_per_site
     
 
-def prep_water_body(dfm):
+def prep_waterBody_data(dfm_agg_site, dfm_agg_wb, thresh_LOQ=20, n_meas=5000, n_targets=5):
     """filter sites and targets to output the least bias dataset for classification analysis on water body type
     
     Filter dfm:
     - filter out uncertain results from dfm (remove 47'607 rows)
-    - filter out Transitional water (too few measurements: 2843)
+    - filter out Transitional water (too few measurements: 2843; and definition not clear)
+    
+    filter out targets:
+    - that have too many measurements below detection limit (LOQ)
+    - that have less than a minimum number of measurement in either of wb types
+    - that have measurement that cannot really be trusted (wide range, possibly wrong units, ...)
+      these are "*metal* and its compounds", "Other chemical parameter..."
+    - [that are irrelevant or trivial ("temperature")]
     """
-    dfm = dfm[(dfm.resultObservationStatus=='A') | (dfm.resultObservationStatus.isna())]
-    dfm = dfm[dfm.parameterWaterBodyCategory!='TeW']
     
-    dfm_agg_wb = aggregate(dfm, groups=['parameterWaterBodyCategory',
-                                        'observedPropertyDeterminandLabel'])
+    # == Filters per wb ==
+    dfm_agg_wb = dfm_agg_wb[dfm_agg_wb.resultQualityObservedValueBelowLOQ_perc <= thresh_LOQ]
+    
     wb_counts = dfm_agg_wb['resultObservedValue_count'].unstack(level=-1).dropna(axis='columns')
-    wb_counts = wb_counts.loc[:, ~(wb_counts<5000).any()]
-
+    wb_counts = wb_counts.loc[:, ~(wb_counts<n_meas).any()]
+    wb_counts = wb_counts.filter(regex='^((?!compounds|Other).)*$', axis=1)
+    # select targets with most overall measurements
+    col_order = wb_counts.sum().sort_values(ascending=False).index
+    wb_counts = wb_counts[col_order]
+    if wb_counts.shape[1] >= n_targets:
+        wb_counts = wb_counts.iloc[:, :n_targets]
+    else:
+        print(f"n_targets (={n_targets}) is lower than the number of filtered targets: {wb_counts.shape[1]}")
+        n_targets = wb_counts.shape[1]
     
-    
-    # dfm_agg_site = aggregate(dfm, groups=['monitoringSiteIdentifier',
-    #                                     'parameterWaterBodyCategory',
-    #                                     'observedPropertyDeterminandLabel'])
+    # == Filters per site ==
+    dfm_agg_site = dfm_agg_site[dfm_agg_site.index.get_level_values(2).isin(wb_counts.columns)]
+    # potential other filters per site
     # dfm_agg_site = dfm_agg_site[dfm_agg_site.resultObservedValue_count >= 10]
     # dfm_agg_site = dfm_agg_site[dfm_agg_site.resultQualityObservedValueBelowLOQ_perc <= 60]
+    wb_data = dfm_agg_site['resultObservedValue_mean'].unstack(level=2)
+    wb_data = wb_data.dropna(how='all')
+    # wb_data.index = wb_data.index.cat.remove_unused_categories()
     
-    # wb = dfm_agg_wb['resultObservedValue_mean'].unstack(level=2)
-    # wb2 = wb.unstack(level=-1)
+    # == Scale data ==
+    '''
+    - Necessary for training supervised models.
+    Without scaling, the LinearSVC method fails to converge.
+    - Scaling is done before filling NAs.
+    '''
+    data = StandardScaler().fit_transform(wb_data.values)
+    data = pd.DataFrame(data, index=wb_data.index, columns=wb_data.columns)
     
+    # == Manage Na values / Imputation ==
+    '''
+    Keeping all targets leads to a lot of NAs:
+        - Option A: regouping per WB types (with large target selection), filtering
+        out all sites with at least one NA means means retaining 5'831 sites for all WB except TW and 9260 sites for all WB except TW and TeW (Vs 46'812 for all NA)
+        - Option B: replacing Na with 0
+            + and then optionnaly, filter targets using various feature
+            selection methods (see https://scikit-learn.org/stable/modules/feature_selection.html)
+    '''
+    # Option A: Drop NA
+    wb_data = wb_data.dropna()
+    # Option B: impute and select features 
+    # wb_data.fillna(value=0, inplace=True)
+    
+    # == Check balance of data ==
+    wb_dist = wb_data.index.get_level_values(1).value_counts()
+    # wb_dist.index = wb_dist.index.astype('str')
+    
+    plt.figure()
+    ax = wb_dist.plot(kind='barh')
+    ax.invert_yaxis()
+    ax.set_xlabel('number of monitoring sites')
+    ax.set_title('Number of sites per category') 
+    
+    # Split train and test datasets
+    labels = wb_data.index.get_level_values('parameterWaterBodyCategory').remove_unused_categories().astype('str')
+    train_perc = 0.5
+    x_train, x_test, y_train, y_test = train_test_split(wb_data, labels, train_size=train_perc, stratify=labels)
+    
+    return labels, n_targets, wb_data, train_perc, x_train, x_test, y_train, y_test
+    
+
+def classify_data(data, train_perc: float, x_train, x_test, y_train, y_test):
+    """
+    Runs classifier method (supervised learning). At the moment the method
+    used is LinearSVC
+    
+    TBD:
+        - options for different classification methods (LinearSVC, K-neighbors,
+          etc.)
+        - plot resembling a pair plot with seperation vectors from svc
+        - run cross validation (might have to do it in workflow and not 
+          directly in function)
+
+    Parameters
+    ----------
+    data : pandas DataFrame
+        numerical tidy data ready for machine learning (sites x targets)
+    train_perc : float
+        percentage of train vs test data for supervised learning.
+    x_train : pandas DataFrame
+        split data to be used for model training.
+    x_test : pandas DataFrame
+        split data to be used for model testing.
+    y_train : pandas Index
+        output (usually labels) for training the model.
+    y_test : pandas Index
+        output (usually labels) for testing the model.
+
+    Returns
+    -------
+    y_pred : numpy.ndarray
+        vetor of predicted labels.
+    """
+    classifier = svm.LinearSVC()
+    classifier.fit(x_train, y_train)
+    y_pred = classifier.predict(x_test)
+    
+    cm = metrics.confusion_matrix(y_test, y_pred, labels=classifier.classes_)
+    cm_disp = metrics.ConfusionMatrixDisplay(cm, display_labels=classifier.classes_)
+    cm_disp.plot(cmap='Greens')
+    plt.title('Confusion Matrix, train/test split = {:n}/{:n}'.format(train_perc*100, (1-train_perc)*100))
+    
+    scores = metrics.classification_report(y_test, y_pred, target_names=classifier.classes_)
+    print(scores)
+    
+    return y_pred
+
+
+def proj_data(data: 'pd.DataFrame or np.array', target_nb, cluster_labels: 'np.array'):
+    """
+    Run dimension reduction methods (UMAP and PCA) and plot results.
+    
+    TBD:
+        - Make use of cluster_labels optional, i.e. only when available.
+
+    Parameters
+    ----------
+    data : 'pd.DataFrame or np.array'
+        Data to be analysed.
+    cluster_labels : 'np.array'
+        labels coming from classifier analysis.
+
+    Returns
+    -------
+    None.
+
+    """
+    # UMAP projection
+    '''
+    UMAP can randomly output very different projections
+        + use random generator to see if results are indeed consistent
+    '''
+    umap_model = umap.UMAP()
+    embedding = umap_model.fit_transform(data)
+    embedding.shape   
+    
+    plt.figure()
+    plt.scatter(
+        embedding[:, 0],
+        embedding[:, 1],
+        c=cluster_labels)
+    plt.title('UMAP projection of the top-{} targets, K-means cluster labels'.format(target_nb), fontsize=12)
+    
+    plt.figure()
+    sns.relplot(
+        embedding[:, 0],
+        embedding[:, 1],
+        hue=data.index.get_level_values('parameterWaterBodyCategory'),
+        # style=data.index.get_level_values('rbdName'),
+        s=40,
+        alpha=0.8,
+        palette='muted')
+    plt.title('UMAP projection of the top-{} targets, real label'.format(target_nb), fontsize=12)
+    
+    # PCA
+    pca = PCA()
+    pca.fit(data)
+    data_pcaed = pca.transform(data)
+    
+    plt.plot(pca.explained_variance_ratio_, '-o')
+    plt.ylabel('percentage of explained variance')
+    plt.xlabel('component number')
+    plt.title('Scree plot')
+    plt.show()
+    
+    sns.scatterplot(data_pcaed[:,0],data_pcaed[:,1], hue=cluster_labels, palette='bright')
+    plt.xlabel('First component')
+    plt.ylabel('Second component')
+    plt.title('PCA - K-means clusters')
+    plt.show()
+    
+    sns.relplot(data_pcaed[:,0],
+                data_pcaed[:,1],
+                hue=data.index.get_level_values('parameterWaterBodyCategory'),
+                # style=data.index.get_level_values('rbdName'),
+                s=40,
+                alpha=0.8,
+                palette='muted')
+    plt.xlabel('First component')
+    plt.ylabel('Second component')
+    plt.title('PCA- real labels')
+    plt.show()
 
 
     # %% LOAD FILES
 if __name__ == "__main__":
-    # path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
-    #     "\\", "/")
-    path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets" \
-        .replace("\\", "/")
+    path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
+        "\\", "/")
+    # path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets" \
+    #     .replace("\\", "/")
     os.chdir(path)
 
     # FROM CSV
@@ -586,9 +774,11 @@ if __name__ == "__main__":
     # df_agg = pd.read_pickle("WISE/Data_EU_aggregated_colFiltered.pkl")
     dfm = pd.read_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
     # dfm_agg = pd.read_pickle("WISE/Data_EU_aggregated_custom_from_disaggregated.pkl")
-    dfm_agg_year = pd.read_pickle("WISE/Data_EU_aggregated_custom_perYear_from_disaggregated.pkl")
+    # dfm_agg_year = pd.read_pickle("WISE/Data_EU_aggregated_custom_perYear_from_disaggregated.pkl")
+    # dfm_agg_season = pd.read_pickle("WISE/Data_EU_aggregated_perSiteTargetSeason.pkl")
+    # dfm_agg_season_2020 = pd.read_pickle("WISE/Data_EU_aggregated_perSiteTargetSeason_2020.pkl")
     
-    """ aggregate October to Mars = winter; and April to September = summer"""
+    """ aggregate October to March = winter; and April to September = summer"""
     
     
     
@@ -684,7 +874,32 @@ if __name__ == "__main__":
         
     slider_tt.on_changed(update_slider)
     
-    # %% PREP DATA FOR CLASSIFICATION ANALYSIS
+    # %% CLASSIFICATION ANALYSIS
+    dfm = dfm[(dfm.resultObservationStatus=='A') | (dfm.resultObservationStatus.isna())]
+    dfm = dfm[(dfm.parameterWaterBodyCategory!='TeW') & (dfm.parameterWaterBodyCategory!='TW')]
+    # dfm_agg_season = aggregate(dfm, groups=['monitoringSiteIdentifier',
+    #                                         'observedPropertyDeterminandLabel',
+    #                                         'season'])
+    # dfm_agg_season_2020 = aggregate(dfm[dfm.year==2020],
+    #                            groups=['monitoringSiteIdentifier',
+    #                                    'observedPropertyDeterminandLabel',
+    #                                    'season'])
+    dfm_agg_site = aggregate(dfm, groups=['monitoringSiteIdentifier',
+                                          'parameterWaterBodyCategory',
+                                          'observedPropertyDeterminandLabel'])
+    dfm_agg_wb = aggregate(dfm, groups=['parameterWaterBodyCategory',
+                                        'observedPropertyDeterminandLabel'])
+    
+    labels, n_targets, wb_data, train_perc, x_train, x_test, y_train, y_test = prep_waterBody_data(dfm_agg_site, dfm_agg_wb)
+    y_pred = classify_data(wb_data, train_perc, x_train, x_test, y_train, y_test)
+    
+    wb_map = {'CW': 0,
+              'GW': 1,
+              'LW': 2,
+              'RW': 3}
+    cluster_labels = labels.map(wb_map)
+    proj_data(wb_data, n_targets, cluster_labels)
+    
     
     
     

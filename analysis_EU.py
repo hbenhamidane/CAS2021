@@ -57,9 +57,9 @@ from sklearn.preprocessing import StandardScaler
 from sklearn import svm
 # from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
-# from sklearn.mixture import GaussianMixture
-# from sklearn.metrics import silhouette_score
-# from sklearn.cluster import KMeans
+from sklearn.mixture import GaussianMixture
+from sklearn.metrics import silhouette_score
+from sklearn.cluster import KMeans
 from sklearn import metrics
 # from scipy import stats
 # import statsmodels.api as sm
@@ -72,6 +72,8 @@ import pandas as pd
 from matplotlib.widgets import Slider
 import matplotlib.dates as mdates
 import matplotlib.colors as mcol
+from imblearn.over_sampling import RandomOverSampler
+from imblearn.under_sampling import RandomUnderSampler
 
 
 
@@ -555,7 +557,7 @@ def prep_plot(dfm, tt_id_year, target):
     return tts, tts_per_site
     
 
-def prep_waterBody_data(dfm_agg_site, dfm_agg_wb, thresh_LOQ=20, n_meas=5000, n_targets=5):
+def prep_waterBody_data(dfm_agg_site, dfm_agg_wb, thresh_LOQ=20, n_meas=5000, n_targets=6):
     """filter sites and targets to output the least bias dataset for classification analysis on water body type
     
     Filter dfm:
@@ -613,27 +615,118 @@ def prep_waterBody_data(dfm_agg_site, dfm_agg_wb, thresh_LOQ=20, n_meas=5000, n_
             selection methods (see https://scikit-learn.org/stable/modules/feature_selection.html)
     '''
     # Option A: Drop NA
-    wb_data = wb_data.dropna()
+    data = data.dropna()
     # Option B: impute and select features 
     # wb_data.fillna(value=0, inplace=True)
     
-    # == Check balance of data ==
-    wb_dist = wb_data.index.get_level_values(1).value_counts()
+    # == Rebalance data ==
+    # Check balance of data
+    dist = data.index.get_level_values(1).value_counts()
     # wb_dist.index = wb_dist.index.astype('str')
-    
     plt.figure()
-    ax = wb_dist.plot(kind='barh')
+    ax = dist.plot(kind='barh')
     ax.invert_yaxis()
     ax.set_xlabel('number of monitoring sites')
     ax.set_title('Number of sites per category') 
     
-    # Split train and test datasets
-    labels = wb_data.index.get_level_values('parameterWaterBodyCategory').remove_unused_categories().astype('str')
+    # undersample over-represented categories
+    data_orig = data.copy()
+    labels = data.index.get_level_values('parameterWaterBodyCategory').remove_unused_categories().astype('str')
+    under = RandomUnderSampler(sampling_strategy='not minority')
+    data, labels = under.fit_resample(data, labels)
+    # # TBD: reconstruct dataframe using over.sample_indices_
+    
+    
+    # == Split train and test datasets ==
+    # labels = wb_data.index.get_level_values('parameterWaterBodyCategory').remove_unused_categories().astype('str')
     train_perc = 0.5
-    x_train, x_test, y_train, y_test = train_test_split(wb_data, labels, train_size=train_perc, stratify=labels)
+    x_train, x_test, y_train, y_test = train_test_split(data, labels, train_size=train_perc, stratify=labels)
     
-    return labels, n_targets, wb_data, train_perc, x_train, x_test, y_train, y_test
+    return labels, n_targets, data, train_perc, x_train, x_test, y_train, y_test
     
+
+def cluster_data(data, method: 'str'):
+    """
+    Run cluster analysis (unsupervised learning). The methods ''gaussian' and 'k-means' run 
+    Gaussian_mixtures and KMeans for various number of cluster (default is 2 
+    to 15 clusters) and compute scores (silhouette, aic and bic (gaussian
+    mixtures only).
+
+    Parameters
+    ----------
+    data : pandas DataFrame
+        numerical data to be clustered. Should be the output of prep_data().
+    method : 'str'
+        Clustering method to be used ('custom', 'gaussian', 'k-means')
+        - 'custom' applies a method with specificied number of clusters.
+        - 'gaussian' and 'k-means' run analysis for and compute scores for max 
+        15 clusters.
+
+    Returns
+    -------
+    cluster_labels : 'numpy.ndarray of int32'
+        1D numpy array of integer corresponding to the cluster number for reach data input.
+
+    """
+    # initialisation of variables
+    aic_list = []
+    bic_list = []
+    sil_k = []
+    sil_g =[]
+    max_cl = 15
+    
+    # Kmeans
+    if method == 'k-means':
+        for i in range(2, max_cl):
+            clusterer = KMeans(n_clusters=i)
+            clusterer.fit(data)
+            cluster_centers = clusterer.cluster_centers_
+            cluster_labels = clusterer.predict(data)
+            score = metrics.silhouette_score(data, cluster_labels)
+            sil_k.append(score)
+            
+        plt.plot(range(2, max_cl), sil_k, '-o')
+        plt.xlabel('number of clusters')
+        plt.ylabel('score')
+        plt.title('silhouette - Kmeans')
+        plt.show()
+    
+    # Gaussian mixtures
+    elif method == 'gaussian':
+        for i in range(2, max_cl):
+            clusterer = GaussianMixture(n_components=i)
+            clusterer.fit(data)
+            cluster_labels = clusterer.predict(data)
+            score = metrics.silhouette_score(data, cluster_labels)
+            aic_list.append(clusterer.aic(data))
+            bic_list.append(clusterer.bic(data))
+            sil_g.append(score)
+        
+        plt.plot(range(2, max_cl), sil_g, '-o')
+        plt.xlabel('number of clusters')
+        plt.ylabel('score')
+        plt.title('silhouette - Gaussian Mixture')
+        plt.show()
+        
+        plt.plot(range(2, max_cl), aic_list, '-o')
+        plt.xlabel('number of clusters')
+        plt.ylabel('score')
+        plt.title('aic - Gaussian Mixture')
+        plt.show()
+        
+        plt.plot(range(2, max_cl), bic_list, '-o')
+        plt.xlabel('number of clusters')
+        plt.ylabel('score')
+        plt.title('bic - Gaussian Mixture')
+        plt.show()
+    
+    # Clustering to plot
+    elif method == 'custom':
+        clusterer = KMeans(n_clusters=4)
+        clusterer.fit(data)
+        cluster_labels = clusterer.predict(data)
+        
+        return cluster_labels
 
 def classify_data(data, train_perc: float, x_train, x_test, y_train, y_test):
     """
@@ -760,14 +853,14 @@ def proj_data(data: 'pd.DataFrame or np.array', target_nb, cluster_labels: 'np.a
 
     # %% LOAD FILES
 if __name__ == "__main__":
-    path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
-        "\\", "/")
-    # path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets" \
-    #     .replace("\\", "/")
+    # path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
+    #     "\\", "/")
+    path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets" \
+        .replace("\\", "/")
     os.chdir(path)
 
     # FROM CSV
-    # spatial = pd.read_csv("WISE/Waterbase_v2021_1_S_WISE6_SpatialObject_DerivedData.csv")
+    spatial = pd.read_csv("WISE/Waterbase_v2021_1_S_WISE6_SpatialObject_DerivedData.csv")
     # df = load_csv_disaggregated_data(save=True)
     # df_agg = load_csv_aggregated_data(save=True)
     # dfm = merge_data(df, spatial, save=True)
@@ -880,9 +973,9 @@ if __name__ == "__main__":
     # %% CLASSIFICATION ANALYSIS
     dfm = dfm[(dfm.resultObservationStatus=='A') | (dfm.resultObservationStatus.isna())]
     dfm = dfm[(dfm.parameterWaterBodyCategory!='TeW') & (dfm.parameterWaterBodyCategory!='TW')]
-    # dfm_agg_season = aggregate(dfm, groups=['monitoringSiteIdentifier',
-    #                                         'observedPropertyDeterminandLabel',
-    #                                         'season'])
+    dfm_agg_season = aggregate(dfm, groups=['monitoringSiteIdentifier',
+                                            'observedPropertyDeterminandLabel',
+                                            'season'])
     # dfm_agg_season_2020 = aggregate(dfm[dfm.year==2020],
     #                            groups=['monitoringSiteIdentifier',
     #                                    'observedPropertyDeterminandLabel',
@@ -894,6 +987,7 @@ if __name__ == "__main__":
                                         'observedPropertyDeterminandLabel'])
     
     labels, n_targets, wb_data, train_perc, x_train, x_test, y_train, y_test = prep_waterBody_data(dfm_agg_site, dfm_agg_wb)
+    cluster_labels = cluster_data(wb_data, method='custom')
     y_pred = classify_data(wb_data, train_perc, x_train, x_test, y_train, y_test)
     
     wb_map = {'CW': 0,

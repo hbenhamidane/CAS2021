@@ -171,25 +171,43 @@ Data sources:
 <div><p><a class="reference external" href="https://www.eea.europa.eu/data-and-maps/data/waterbase-water-quality-icm-2">https://www.eea.europa.eu/data-and-maps/data/waterbase-water-quality-icm-2</a></p>
 </div></blockquote>
 <dl>
-<dt>TO DO:</dt><dd><ul class="simple">
-<li><p>check completion of data</p></li>
-</ul>
-</dd>
 <dt>TO DO for classification analysis:</dt><dd><ul class="simple">
 <li><p>check which parameters are common to all sites or to all waterbody types</p></li>
 </ul>
 </dd>
-<dt>TO DO for time traces analysis:</dt><dd><ul>
+<dt>TO DO for time traces analysis:</dt><dd><ul class="simple">
 <li><p>read dates from original csv file as strings and convert to datetime before saving pickle file</p></li>
 <li><p>plot time traces</p></li>
-<li><dl>
-<dt>find interesting questions to answer</dt><dd><ul class="simple">
-<li><p>is there a pattern in terms of metal pollution?</p></li>
+<li><dl class="simple">
+<dt>find interesting questions to answer</dt><dd><ul>
+<li><dl class="simple">
+<dt>maybe for Electrical conductivity, but results are more interesting to show:</dt><dd><ul>
+<li><p>annual variation</p></li>
+<li><p>depth variation</p></li>
 </ul>
-<p>[10:27] Ben Hamidane, Hisham</p>
 </dd>
 </dl>
 </li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</dd>
+<dt>TO DO for mapping:</dt><dd><ul class="simple">
+<li><dl class="simple">
+<dt>create map of all sites including</dt><dd><ul>
+<li><p>label color with water type</p></li>
+<li><p>label details with site identifier, river body name, etc.</p></li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</dd>
+<dt>TO DO for documentation:</dt><dd><ul class="simple">
+<li><p>get detailed doc on functions using Sphinx</p></li>
+<li><p>troubleshoot doc update on ReadTheDoc (or just import at the end)</p></li>
 </ul>
 </dd>
 <dt>Targets of interest from Hisham:</dt><dd><ul class="simple">
@@ -205,32 +223,53 @@ AT_group2 &lt;- c(“Lead and its compounds”, “Copper and its compounds”, 
 <p class="rubric">Functions</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">aggregate</span></code>(df, groups[, save])</p></td>
+<td><p>&quot;C'est marqué dessus comme le port-salut&quot;</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">classify_data</span></code>(data, train_perc, x_train, ...)</p></td>
+<td><p>Runs classifier method (supervised learning).</p></td>
+</tr>
 <tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">dump</span></code>()</p></td>
-<td><p></p></td>
+<td><p>miscalleneous commands</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">find_time_traces</span></code>(df_agg, spatial[, ...])</p></td>
 <td><p>Computes a summary of intersting sites, targets, and years for time-trace analysis.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">investigate_data</span></code>(df, spatial)</p></td>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">find_time_traces_ca</span></code>(dfm_agg, dfm_agg_year[, ...])</p></td>
+<td><p>Computes a summary of intersting sites, targets, and years for time-trace analysis.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">investigate_data</span></code>(df, spatial)</p></td>
 <td><p></p></td>
 </tr>
-<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_csv_aggregated_data</span></code>([save])</p></td>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_csv_aggregated_data</span></code>([save])</p></td>
 <td><p><ul class="simple">
 <li><p>load csv aggregated data</p></li>
 </ul>
 </p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_csv_disaggregated_data</span></code>([save])</p></td>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_csv_disaggregated_data</span></code>([save])</p></td>
 <td><p><ul class="simple">
 <li><p>load csv disaggregated data</p></li>
 </ul>
 </p></td>
 </tr>
-<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">prep_data</span></code>(df, spatial[, save])</p></td>
-<td><p>Purge df (dsaggregated data) and spatial from unclear data and merge spatial:     - remove all NAs site IDs in spatial     - remove duplicated sites in spatial (keep in priority sites with euMonitoringSiteCode scheme) result:     - 60'171 rows are removed from df to create dfm (0.1% of rows in df)</p></td>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">merge_data</span></code>(df, spatial[, save])</p></td>
+<td><p>Purge df (dsaggregated data) and spatial from unclear data and merge spatial:     - remove all NAs site IDs in spatial     - remove duplicated sites in spatial (keep in priority sites with euMonitoringSiteCode scheme) result:     - 60'171 rows are removed from df due to no site match in spatial (0.1% of rows in df)     - 8'041 rows are dropped because result value is NA     - Added column 'year' (for subsequent aggregation criteria)</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">select_time_trace</span></code>(dfm, tt_year_id, site, target)</p></td>
-<td><p>WEIRD, there is no match in years between the filtered aggregated data and the raw disaggregated data</p></td>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">prep_plot</span></code>(dfm, tt_id_year, target)</p></td>
+<td><p>N.B.: generating a MultiIndex (site, year) is much faster than .apply(isin())</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">prep_waterBody_data</span></code>(dfm_agg_site, dfm_agg_wb)</p></td>
+<td><p>filter sites and targets to output the least bias dataset for classification analysis on water body type</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">proj_data</span></code>(data, target_nb, cluster_labels)</p></td>
+<td><p>Run dimension reduction methods (UMAP and PCA) and plot results.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">select_time_trace</span></code>(dfm, tt_id_year, site, target)</p></td>
+<td><p><strong>* function unused since WISE aggregated data does not match disaggregated data :-( !!! *</strong> simply filters disaggregated data based on site, target, and year</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">select_time_trace_ca</span></code>(dfm, tt_id_year, site, ...)</p></td>
+<td><p>simply filters disaggregated data based on site, target, and year</p></td>
 </tr>
 </tbody>
 </table>

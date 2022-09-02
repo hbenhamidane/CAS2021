@@ -6,3 +6,4 @@ Project Water modules
 
    analysis_EU
    maps_EU
+   analysis_wf

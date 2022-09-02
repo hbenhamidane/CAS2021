@@ -400,6 +400,9 @@ def aggregate(df, groups: list, save=False) -> pd.DataFrame:
     "C'est marqué dessus comme le port-salut"
     
     Aggregates raw data based on groups
+    The returned aggregated data has stats on:
+        - measured values (count, mean, std)
+        - % of measurement below LOQ
 
     Parameters
     ----------
@@ -557,7 +560,7 @@ def prep_waterBody_data(dfm_agg_site, dfm_agg_wb, thresh_LOQ=20, n_meas=5000, n_
     
     Filter dfm:
     - filter out uncertain results from dfm (remove 47'607 rows)
-    - filter out Transitional water (too few measurements: 2843; and definition not clear)
+    - filter out Territorial water (too few measurements: 2843)
     
     filter out targets:
     - that have too many measurements below detection limit (LOQ)

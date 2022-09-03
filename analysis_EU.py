@@ -575,7 +575,7 @@ def prep_waterBody_data(dfm_agg_site, dfm_agg_wb, thresh_LOQ=20, n_meas=5000, n_
     # == Filters per wb ==
     dfm_agg_wb = dfm_agg_wb[dfm_agg_wb.resultQualityObservedValueBelowLOQ_perc <= thresh_LOQ]
     
-    wb_counts = dfm_agg_wb['resultObservedValue_count'].unstack(level=-1).dropna(axis='columns')
+    wb_counts = dfm_agg_wb['resultObservedValue_count'].unstack(level=-1)#.dropna(axis='columns')
     wb_counts = wb_counts.loc[:, ~(wb_counts<n_meas).any()]
     wb_counts = wb_counts.filter(regex='^((?!compounds|Other).)*$', axis=1)
     # select targets with most overall measurements
@@ -853,10 +853,10 @@ def proj_data(data: 'pd.DataFrame or np.array', target_nb, cluster_labels: 'np.a
 
     # %% LOAD FILES
 if __name__ == "__main__":
-    # path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
-    #     "\\", "/")
-    path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets" \
-        .replace("\\", "/")
+    path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
+        "\\", "/")
+    # path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets" \
+    #     .replace("\\", "/")
     os.chdir(path)
 
     # FROM CSV
@@ -972,7 +972,8 @@ if __name__ == "__main__":
     
     # %% CLASSIFICATION ANALYSIS
     dfm = dfm[(dfm.resultObservationStatus=='A') | (dfm.resultObservationStatus.isna())]
-    dfm = dfm[(dfm.parameterWaterBodyCategory!='TeW') & (dfm.parameterWaterBodyCategory!='TW')]
+    # dfm = dfm[(dfm.parameterWaterBodyCategory!='TeW') & (dfm.parameterWaterBodyCategory!='TW')]
+    dfm = dfm[(dfm.parameterWaterBodyCategory!='TeW')]
     dfm_agg_season = aggregate(dfm, groups=['monitoringSiteIdentifier',
                                             'observedPropertyDeterminandLabel',
                                             'season'])

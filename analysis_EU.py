@@ -48,13 +48,13 @@ __status__ = "Prototype"
 
 # %% PACKAGES
 # from collections import Counter
-# from imblearn.under_sampling import RandomUnderSampler
-# from imblearn.over_sampling import RandomOverSampler
 import umap
 from sklearn.model_selection import train_test_split
 # from sklearn.feature_selection import VarianceThreshold
 from sklearn.preprocessing import StandardScaler
 from sklearn import svm
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.ensemble import RandomForestClassifier
 # from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 from sklearn.mixture import GaussianMixture
@@ -72,6 +72,7 @@ import pandas as pd
 from matplotlib.widgets import Slider
 import matplotlib.dates as mdates
 import matplotlib.colors as mcol
+from mpl_toolkits.axes_grid1.axes_divider import make_axes_area_auto_adjustable
 from imblearn.over_sampling import RandomOverSampler
 from imblearn.under_sampling import RandomUnderSampler
 
@@ -271,6 +272,16 @@ def merge_data(df, spatial, save=False):
                    on='monitoringSiteIdentifier').reset_index(drop=True)
     dfm.dropna(subset=['resultObservedValue'], inplace=True)
     
+    # change water body codes to explicit names (useful for plots)
+    wb_names = {'RW': 'river',
+                'GW': 'ground',
+                'CW': 'coastal',
+                'TeW': 'territorial',
+                'TW': 'transitional',
+                'LW': 'lake'}
+    dfm['parameterWaterBodyCategory'] = dfm['parameterWaterBodyCategory'].cat.rename_categories(wb_names)
+    
+    # Add year and season column
     dfm['year'] = dfm.phenomenonTimeSamplingDate.dt.year.astype('category')
     seasons = {1: 'winter',
                2: 'winter',
@@ -557,7 +568,7 @@ def prep_plot(dfm, tt_id_year, target):
     return tts, tts_per_site
     
 
-def prep_waterBody_data(dfm_agg_site, dfm_agg_wb, thresh_LOQ=20, n_meas=5000, n_targets=6):
+def prep_waterBody_data(dfm_agg_site, dfm_agg_wb, thresh_LOQ=20, n_meas=5000, thresh_targets=6, thresh_sitesPerWB=0, rebalance=True, train_perc=0.5):
     """filter sites and targets to output the least bias dataset for classification analysis on water body type
     
     Filter dfm:
@@ -575,17 +586,18 @@ def prep_waterBody_data(dfm_agg_site, dfm_agg_wb, thresh_LOQ=20, n_meas=5000, n_
     # == Filters per wb ==
     dfm_agg_wb = dfm_agg_wb[dfm_agg_wb.resultQualityObservedValueBelowLOQ_perc <= thresh_LOQ]
     
-    wb_counts = dfm_agg_wb['resultObservedValue_count'].unstack(level=-1)#.dropna(axis='columns')
+    wb_counts = dfm_agg_wb['resultObservedValue_count'].unstack(level=-1).dropna(axis='columns')
     wb_counts = wb_counts.loc[:, ~(wb_counts<n_meas).any()]
     wb_counts = wb_counts.filter(regex='^((?!compounds|Other).)*$', axis=1)
     # select targets with most overall measurements
     col_order = wb_counts.sum().sort_values(ascending=False).index
     wb_counts = wb_counts[col_order]
-    if wb_counts.shape[1] >= n_targets:
-        wb_counts = wb_counts.iloc[:, :n_targets]
+    if wb_counts.shape[1] >= thresh_targets:
+        print(f"Targets were filtered: {thresh_targets} top targets kept out of {wb_counts.shape[1]}.")
+        wb_counts = wb_counts.iloc[:, :thresh_targets]
     else:
-        print(f"n_targets (={n_targets}) is lower than the number of filtered targets: {wb_counts.shape[1]}")
-        n_targets = wb_counts.shape[1]
+        print(f"FYI, target threshold (={thresh_targets}) is higher than the number of filtered targets: {wb_counts.shape[1]}")
+    n_targets = wb_counts.shape[1]
     
     # == Filters per site ==
     dfm_agg_site = dfm_agg_site[dfm_agg_site.index.get_level_values(2).isin(wb_counts.columns)]
@@ -627,22 +639,39 @@ def prep_waterBody_data(dfm_agg_site, dfm_agg_wb, thresh_LOQ=20, n_meas=5000, n_
     ax = dist.plot(kind='barh')
     ax.invert_yaxis()
     ax.set_xlabel('number of monitoring sites')
-    ax.set_title('Number of sites per category') 
+    ax.set_title(f'Number of sites per category \n (number of remaining targets: {n_targets})')
+    make_axes_area_auto_adjustable(ax)
     
-    # undersample over-represented categories
-    data_orig = data.copy()
     labels = data.index.get_level_values('parameterWaterBodyCategory').remove_unused_categories().astype('str')
-    under = RandomUnderSampler(sampling_strategy='not minority')
-    data, labels = under.fit_resample(data, labels)
-    # # TBD: reconstruct dataframe using over.sample_indices_
+    
+    # remove WB with too few sites
+    if thresh_sitesPerWB != 0:
+        wb_to_drop = dist[dist<thresh_sitesPerWB].index
+        data = data[~data.index.get_level_values(1).isin(wb_to_drop.values)]
+        print(f"water bodies {wb_to_drop.values} were dropped as the number of site is < {thresh_sitesPerWB}")
+        
+    # undersample over-represented categories
+    if rebalance == True:
+        data_orig = data.copy()
+        under = RandomUnderSampler(sampling_strategy='not minority')#, random_state=42)
+        data, labels = under.fit_resample(data, labels)
+        data.index = data_orig.index[under.sample_indices_]
+        labels = pd.Series(labels)
+        dist_rebalanced = labels.value_counts()
+
+        fig = plt.figure()
+        fig.suptitle('Rebalanced data')
+        ax = dist_rebalanced.plot(kind='barh')
+        ax.invert_yaxis()
+        ax.set_xlabel('number of monitoring sites')
+        ax.set_title(f'Number of sites per category \n (number of remaining targets: {n_targets})')
+        make_axes_area_auto_adjustable(ax)
     
     
     # == Split train and test datasets ==
-    # labels = wb_data.index.get_level_values('parameterWaterBodyCategory').remove_unused_categories().astype('str')
-    train_perc = 0.5
-    x_train, x_test, y_train, y_test = train_test_split(data, labels, train_size=train_perc, stratify=labels)
+    x_train, x_test, y_train, y_test = train_test_split(data, labels, train_size=train_perc, stratify=labels)#random_state=42)
     
-    return labels, n_targets, data, train_perc, x_train, x_test, y_train, y_test
+    return dist, labels, n_targets, data, train_perc, x_train, x_test, y_train, y_test
     
 
 def cluster_data(data, method: 'str'):
@@ -684,7 +713,8 @@ def cluster_data(data, method: 'str'):
             cluster_labels = clusterer.predict(data)
             score = metrics.silhouette_score(data, cluster_labels)
             sil_k.append(score)
-            
+         
+        plt.figure()
         plt.plot(range(2, max_cl), sil_k, '-o')
         plt.xlabel('number of clusters')
         plt.ylabel('score')
@@ -702,77 +732,36 @@ def cluster_data(data, method: 'str'):
             bic_list.append(clusterer.bic(data))
             sil_g.append(score)
         
+        plt.figure()
         plt.plot(range(2, max_cl), sil_g, '-o')
         plt.xlabel('number of clusters')
         plt.ylabel('score')
         plt.title('silhouette - Gaussian Mixture')
         plt.show()
         
+        plt.figure()
         plt.plot(range(2, max_cl), aic_list, '-o')
         plt.xlabel('number of clusters')
         plt.ylabel('score')
         plt.title('aic - Gaussian Mixture')
         plt.show()
         
+        plt.figure()
         plt.plot(range(2, max_cl), bic_list, '-o')
         plt.xlabel('number of clusters')
         plt.ylabel('score')
         plt.title('bic - Gaussian Mixture')
         plt.show()
+
     
     # Clustering to plot
     elif method == 'custom':
-        clusterer = KMeans(n_clusters=4)
+        # clusterer = KMeans(n_clusters=4)
+        clusterer = KMeans(n_clusters=2)
         clusterer.fit(data)
         cluster_labels = clusterer.predict(data)
         
         return cluster_labels
-
-def classify_data(data, train_perc: float, x_train, x_test, y_train, y_test):
-    """
-    Runs classifier method (supervised learning). At the moment the method
-    used is LinearSVC
-    
-    TBD:
-        - options for different classification methods (LinearSVC, K-neighbors,
-          etc.)
-        - plot resembling a pair plot with seperation vectors from svc
-        - run cross validation (might have to do it in workflow and not 
-          directly in function)
-
-    Parameters
-    ----------
-    data : pandas DataFrame
-        numerical tidy data ready for machine learning (sites x targets)
-    train_perc : float
-        percentage of train vs test data for supervised learning.
-    x_train : pandas DataFrame
-        split data to be used for model training.
-    x_test : pandas DataFrame
-        split data to be used for model testing.
-    y_train : pandas Index
-        output (usually labels) for training the model.
-    y_test : pandas Index
-        output (usually labels) for testing the model.
-
-    Returns
-    -------
-    y_pred : numpy.ndarray
-        vetor of predicted labels.
-    """
-    classifier = svm.LinearSVC()
-    classifier.fit(x_train, y_train)
-    y_pred = classifier.predict(x_test)
-    
-    cm = metrics.confusion_matrix(y_test, y_pred, labels=classifier.classes_)
-    cm_disp = metrics.ConfusionMatrixDisplay(cm, display_labels=classifier.classes_)
-    cm_disp.plot(cmap='Greens')
-    plt.title('Confusion Matrix, train/test split = {:n}/{:n}'.format(train_perc*100, (1-train_perc)*100))
-    
-    scores = metrics.classification_report(y_test, y_pred, target_names=classifier.classes_)
-    print(scores)
-    
-    return y_pred
 
 
 def proj_data(data: 'pd.DataFrame or np.array', target_nb, cluster_labels: 'np.array'):
@@ -851,6 +840,74 @@ def proj_data(data: 'pd.DataFrame or np.array', target_nb, cluster_labels: 'np.a
     plt.show()
 
 
+def classify_data(train_perc: float, x_train, x_test, y_train, y_test, method):
+    """
+    Runs classifier method (supervised learning).
+    4 different methods can be used:
+    
+    Potential future work:
+        - think of multiple 2D-plots (like scatterplot matrix from seaborn) 
+          or 3D-plots to help visualizing vectors speeration form classifers
+        - run cross validation (might have to do it in another workflow and not 
+          directly in this function)
+
+    Parameters
+    ----------
+    train_perc : float
+        percentage of train vs test data for supervised learning.
+    x_train : pandas DataFrame
+        split data to be used for model training.
+    x_test : pandas DataFrame
+        split data to be used for model testing.
+    y_train : pandas Index
+        output (usually labels) for training the model.
+    y_test : pandas Index
+        output (usually labels) for testing the model.
+
+    Returns
+    -------
+    y_pred : numpy.ndarray
+        vetor of predicted labels.
+    """
+    # The following commented syntax works only with Python version >= 3.10   :-(
+    # match method:
+    #     case 'Linear SVC':
+    #         classifier = svm.LinearSVC()
+    #     case 'K-neighbors':
+    #         classifier = KNeighborsClassifier()
+    #     case 'SVC':
+    #         classifier = svm.SVC()
+    #     case 'Random Forest':
+    #         classifier = RandomForestClassifier()
+    #     case TypeError:
+    #         print('Please have a look at what you input as method, I was not programmed to run this method.  Either update me or use a different method. Please see the help/docstring of this function')
+    if method == 'Linear SVC':
+        classifier = svm.LinearSVC()
+    elif method == 'K-Neighbors':
+        classifier = KNeighborsClassifier()
+    elif method == 'SVC':
+        classifier = svm.SVC()
+    elif method == 'Random Forest':
+        classifier = RandomForestClassifier()
+    else:
+        print("I do not know this method. Either update me or check your spelling")
+        return
+    classifier.fit(x_train, y_train)
+    y_pred = classifier.predict(x_test)
+    
+    # Plot and print results
+    fig, axs = plt.subplots(2, 1, gridspec_kw={'height_ratios': [2, 1]})
+    metrics.ConfusionMatrixDisplay.from_predictions(y_test, y_pred, cmap='Greens', ax=axs[0])
+    plt.gcf().set_size_inches(6.6, 7.5)
+    axs[0].set_title("Confusion Matrix, train/test split = {:n}/{:n} \n Classification method: {}".format(train_perc*100, (1-train_perc)*100, method))
+    scores = metrics.classification_report(y_test, y_pred, target_names=classifier.classes_)
+    axs[1].axis('off')
+    axs[1].text(0., 0.95, scores, va='top', ha='left', fontname='monospace', fontsize=9)
+    plt.subplots_adjust(wspace=0, hspace=0.12, bottom=0, left=0.2)
+    print(scores)
+    
+    return y_pred
+
     # %% LOAD FILES
 if __name__ == "__main__":
     path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
@@ -868,14 +925,13 @@ if __name__ == "__main__":
     # FROM PICKLE
     # df = pd.read_pickle("WISE/Data_EU_disaggregated_colFiltered.pkl")
     # df_agg = pd.read_pickle("WISE/Data_EU_aggregated_colFiltered.pkl")
-    dfm = pd.read_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
+    # dfm = pd.read_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
     # dfm_agg = pd.read_pickle("WISE/Data_EU_aggregated_custom_from_disaggregated.pkl")
     # dfm_agg_year = pd.read_pickle("WISE/Data_EU_aggregated_custom_perYear_from_disaggregated.pkl")
     # dfm_agg_season = pd.read_pickle("WISE/Data_EU_aggregated_perSiteTargetSeason.pkl")
     # dfm_agg_season_2020 = pd.read_pickle("WISE/Data_EU_aggregated_perSiteTargetSeason_2020.pkl")
-    
-    """ aggregate October to March = winter; and April to September = summer"""
-    
+    dfm_agg_site = pd.read_pickle("WISE/Data_EU_aggregated_perSiteTarget.pkl")
+    dfm_agg_wb = pd.read_pickle("WISE/Data_EU_aggregated_perWaterBodyTarget.pkl")
     
     
     # %% IDENTIFY BEST CANDIDATES FOR TIME TRACE ANALYSIS
@@ -894,7 +950,7 @@ if __name__ == "__main__":
     tt_id, tt_id_year = find_time_traces_ca(dfm_agg, dfm_agg_year)
     
     
-    # %% PREP FOR PLOTS
+    # %% PREP FOR TIME-SERIES PLOTS
     """Nota Bene:
         - Electrical conductivity has many different sampling depths
             + color data points with sample depth value
@@ -907,7 +963,7 @@ if __name__ == "__main__":
     tts, tts_per_site = prep_plot(dfm, tt_id_year, target=target)   
 
     
-    # %% PLOT - scatter plots Matplotlib
+    # %% PLOT TIME SERIES - scatter plots Matplotlib
     """ to be run with @matplotlib auto"""
     n_rows=4
     n_cols=2
@@ -970,34 +1026,42 @@ if __name__ == "__main__":
         
     slider_tt.on_changed(update_slider)
     
+    
     # %% CLASSIFICATION ANALYSIS
-    dfm = dfm[(dfm.resultObservationStatus=='A') | (dfm.resultObservationStatus.isna())]
-    # dfm = dfm[(dfm.parameterWaterBodyCategory!='TeW') & (dfm.parameterWaterBodyCategory!='TW')]
-    dfm = dfm[(dfm.parameterWaterBodyCategory!='TeW')]
-    dfm_agg_season = aggregate(dfm, groups=['monitoringSiteIdentifier',
-                                            'observedPropertyDeterminandLabel',
-                                            'season'])
+    # dfm = dfm[(dfm.resultObservationStatus=='A') | (dfm.resultObservationStatus.isna())]
+    # # dfm = dfm[(dfm.parameterWaterBodyCategory!='TeW') & (dfm.parameterWaterBodyCategory!='TW')]
+    # dfm = dfm[(dfm.parameterWaterBodyCategory!='territorial')]
+    # dfm_agg_season = aggregate(dfm, groups=['monitoringSiteIdentifier',
+    #                                         'observedPropertyDeterminandLabel',
+    #                                         'season'])
     # dfm_agg_season_2020 = aggregate(dfm[dfm.year==2020],
     #                            groups=['monitoringSiteIdentifier',
     #                                    'observedPropertyDeterminandLabel',
     #                                    'season'])
-    dfm_agg_site = aggregate(dfm, groups=['monitoringSiteIdentifier',
-                                          'parameterWaterBodyCategory',
-                                          'observedPropertyDeterminandLabel'])
-    dfm_agg_wb = aggregate(dfm, groups=['parameterWaterBodyCategory',
-                                        'observedPropertyDeterminandLabel'])
+    # dfm_agg_site = aggregate(dfm, groups=['monitoringSiteIdentifier',
+    #                                       'parameterWaterBodyCategory',
+    #                                       'observedPropertyDeterminandLabel'])
+    # dfm_agg_wb = aggregate(dfm, groups=['parameterWaterBodyCategory',
+    #                                     'observedPropertyDeterminandLabel'])
     
-    labels, n_targets, wb_data, train_perc, x_train, x_test, y_train, y_test = prep_waterBody_data(dfm_agg_site, dfm_agg_wb)
-    cluster_labels = cluster_data(wb_data, method='custom')
-    y_pred = classify_data(wb_data, train_perc, x_train, x_test, y_train, y_test)
+    dist, labels, n_targets, wb_data, train_perc, x_train, x_test, y_train, y_test = prep_waterBody_data(dfm_agg_site, dfm_agg_wb, n_meas=5000, thresh_targets=5, thresh_sitesPerWB=0, rebalance=True, train_perc=0.5)
+    y_pred = classify_data(train_perc, x_train, x_test, y_train, y_test, method='Random Forest')
     
     wb_map = {'CW': 0,
               'GW': 1,
               'LW': 2,
               'RW': 3}
+    wb_map = {'CW': 0,
+              'GW': 1,
+              'LW': 2,
+              'RW': 3,
+              'TW': 4}
     cluster_labels = labels.map(wb_map)
+    cluster_labels = cluster_data(wb_data, method='gaussian')
     proj_data(wb_data, n_targets, cluster_labels)
     
+    wb_data["Water body"] = wb_data.index.get_level_values(1)
+    sns.pairplot(wb_data, hue='Water body')
     
     
     

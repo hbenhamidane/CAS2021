@@ -756,8 +756,8 @@ def cluster_data(data, method: 'str'):
     
     # Clustering to plot
     elif method == 'custom':
-        # clusterer = KMeans(n_clusters=4)
-        clusterer = KMeans(n_clusters=2)
+        # clusterer = GaussianMixture(n_components=5)
+        clusterer = KMeans(n_clusters=5)
         clusterer.fit(data)
         cluster_labels = clusterer.predict(data)
         
@@ -798,8 +798,8 @@ def proj_data(data: 'pd.DataFrame or np.array', target_nb, cluster_labels: 'np.a
         embedding[:, 1],
         c=cluster_labels)
     plt.title('UMAP projection of the top-{} targets, K-means cluster labels'.format(target_nb), fontsize=12)
+    plt.show()
     
-    plt.figure()
     sns.relplot(
         embedding[:, 0],
         embedding[:, 1],
@@ -809,18 +809,21 @@ def proj_data(data: 'pd.DataFrame or np.array', target_nb, cluster_labels: 'np.a
         alpha=0.8,
         palette='muted')
     plt.title('UMAP projection of the top-{} targets, real label'.format(target_nb), fontsize=12)
+    plt.show()
     
     # PCA
     pca = PCA()
     pca.fit(data)
     data_pcaed = pca.transform(data)
     
+    plt.figure()
     plt.plot(pca.explained_variance_ratio_, '-o')
     plt.ylabel('percentage of explained variance')
     plt.xlabel('component number')
     plt.title('Scree plot')
     plt.show()
     
+    plt.figure()
     sns.scatterplot(data_pcaed[:,0],data_pcaed[:,1], hue=cluster_labels, palette='bright')
     plt.xlabel('First component')
     plt.ylabel('Second component')
@@ -918,16 +921,16 @@ if __name__ == "__main__":
 
     # FROM CSV
     spatial = pd.read_csv("WISE/Waterbase_v2021_1_S_WISE6_SpatialObject_DerivedData.csv")
-    # df = load_csv_disaggregated_data(save=True)
+    df = load_csv_disaggregated_data(save=False)
     # df_agg = load_csv_aggregated_data(save=True)
     # dfm = merge_data(df, spatial, save=True)
     
     # FROM PICKLE
     # df = pd.read_pickle("WISE/Data_EU_disaggregated_colFiltered.pkl")
     # df_agg = pd.read_pickle("WISE/Data_EU_aggregated_colFiltered.pkl")
-    # dfm = pd.read_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
-    # dfm_agg = pd.read_pickle("WISE/Data_EU_aggregated_custom_from_disaggregated.pkl")
-    # dfm_agg_year = pd.read_pickle("WISE/Data_EU_aggregated_custom_perYear_from_disaggregated.pkl")
+    dfm = pd.read_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
+    dfm_agg = pd.read_pickle("WISE/Data_EU_aggregated_custom_from_disaggregated.pkl")
+    dfm_agg_year = pd.read_pickle("WISE/Data_EU_aggregated_custom_perYear_from_disaggregated.pkl")
     # dfm_agg_season = pd.read_pickle("WISE/Data_EU_aggregated_perSiteTargetSeason.pkl")
     # dfm_agg_season_2020 = pd.read_pickle("WISE/Data_EU_aggregated_perSiteTargetSeason_2020.pkl")
     dfm_agg_site = pd.read_pickle("WISE/Data_EU_aggregated_perSiteTarget.pkl")
@@ -958,7 +961,7 @@ if __name__ == "__main__":
         - tt_pH[24] is taken in 1973-1974 and is an exception
         - tt_pH[0] there is A LOT of results taken the same day (30 per day on average...)"""
         
-    target = 'pH'
+    target = 'Electrical conductivity'
     units = dfm.loc[dfm["observedPropertyDeterminandLabel"]==target, "resultUom"].unique()
     tts, tts_per_site = prep_plot(dfm, tt_id_year, target=target)   
 
@@ -969,8 +972,8 @@ if __name__ == "__main__":
     n_cols=2
     n_plots = n_rows * n_cols
     fig, axs = plt.subplots(nrows=n_rows, ncols=n_cols) #, sharey=True
-    # plt.get_current_fig_manager().window.state('zoomed')
-    plt.get_current_fig_manager().window.showMaximized()
+    plt.get_current_fig_manager().window.state('zoomed')
+    # plt.get_current_fig_manager().window.showMaximized()
     plt.subplots_adjust(top=0.90, bottom=0.05)
     fig.suptitle(target)
     
@@ -1057,7 +1060,7 @@ if __name__ == "__main__":
               'RW': 3,
               'TW': 4}
     cluster_labels = labels.map(wb_map)
-    cluster_labels = cluster_data(wb_data, method='gaussian')
+    cluster_labels = cluster_data(wb_data, method='custom')
     proj_data(wb_data, n_targets, cluster_labels)
     
     wb_data["Water body"] = wb_data.index.get_level_values(1)

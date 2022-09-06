@@ -757,7 +757,7 @@ def cluster_data(data, method: 'str'):
     # Clustering to plot
     elif method == 'custom':
         # clusterer = GaussianMixture(n_components=5)
-        clusterer = KMeans(n_clusters=5)
+        clusterer = KMeans(n_clusters=2)
         clusterer.fit(data)
         cluster_labels = clusterer.predict(data)
         
@@ -792,11 +792,14 @@ def proj_data(data: 'pd.DataFrame or np.array', target_nb, cluster_labels: 'np.a
     embedding = umap_model.fit_transform(data)
     embedding.shape   
     
-    plt.figure()
-    plt.scatter(
+    sns.relplot(
         embedding[:, 0],
         embedding[:, 1],
-        c=cluster_labels)
+        hue=cluster_labels,
+        # style=data.index.get_level_values('rbdName'),
+        s=40,
+        alpha=0.8,
+        palette='muted')
     plt.title('UMAP projection of the top-{} targets, K-means cluster labels'.format(target_nb), fontsize=12)
     plt.show()
     
@@ -913,15 +916,15 @@ def classify_data(train_perc: float, x_train, x_test, y_train, y_test, method):
 
     # %% LOAD FILES
 if __name__ == "__main__":
-    path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
-        "\\", "/")
-    # path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets" \
-    #     .replace("\\", "/")
+    # path = "D:\Ludo\Docs\programming\CAS_applied_data_science\project_Water\Datasets".replace(
+    #     "\\", "/")
+    path = r"C:\Users\ludovic.lereste\Documents\CAS_applied_data_science\project_Water\Datasets" \
+        .replace("\\", "/")
     os.chdir(path)
 
     # FROM CSV
     spatial = pd.read_csv("WISE/Waterbase_v2021_1_S_WISE6_SpatialObject_DerivedData.csv")
-    df = load_csv_disaggregated_data(save=False)
+    # df = load_csv_disaggregated_data(save=False)
     # df_agg = load_csv_aggregated_data(save=True)
     # dfm = merge_data(df, spatial, save=True)
     
@@ -929,10 +932,10 @@ if __name__ == "__main__":
     # df = pd.read_pickle("WISE/Data_EU_disaggregated_colFiltered.pkl")
     # df_agg = pd.read_pickle("WISE/Data_EU_aggregated_colFiltered.pkl")
     dfm = pd.read_pickle("WISE/Data_EU_disaggregated_mergedSpatial.pkl")
-    dfm_agg = pd.read_pickle("WISE/Data_EU_aggregated_custom_from_disaggregated.pkl")
-    dfm_agg_year = pd.read_pickle("WISE/Data_EU_aggregated_custom_perYear_from_disaggregated.pkl")
-    # dfm_agg_season = pd.read_pickle("WISE/Data_EU_aggregated_perSiteTargetSeason.pkl")
-    # dfm_agg_season_2020 = pd.read_pickle("WISE/Data_EU_aggregated_perSiteTargetSeason_2020.pkl")
+    # dfm_agg = pd.read_pickle("WISE/Data_EU_aggregated_custom_from_disaggregated.pkl")
+    # dfm_agg_year = pd.read_pickle("WISE/Data_EU_aggregated_custom_perYear_from_disaggregated.pkl")
+    # # dfm_agg_season = pd.read_pickle("WISE/Data_EU_aggregated_perSiteTargetSeason.pkl")
+    # # dfm_agg_season_2020 = pd.read_pickle("WISE/Data_EU_aggregated_perSiteTargetSeason_2020.pkl")
     dfm_agg_site = pd.read_pickle("WISE/Data_EU_aggregated_perSiteTarget.pkl")
     dfm_agg_wb = pd.read_pickle("WISE/Data_EU_aggregated_perWaterBodyTarget.pkl")
     
@@ -1034,32 +1037,32 @@ if __name__ == "__main__":
     # dfm = dfm[(dfm.resultObservationStatus=='A') | (dfm.resultObservationStatus.isna())]
     # # dfm = dfm[(dfm.parameterWaterBodyCategory!='TeW') & (dfm.parameterWaterBodyCategory!='TW')]
     # dfm = dfm[(dfm.parameterWaterBodyCategory!='territorial')]
-    # dfm_agg_season = aggregate(dfm, groups=['monitoringSiteIdentifier',
-    #                                         'observedPropertyDeterminandLabel',
-    #                                         'season'])
-    # dfm_agg_season_2020 = aggregate(dfm[dfm.year==2020],
-    #                            groups=['monitoringSiteIdentifier',
-    #                                    'observedPropertyDeterminandLabel',
-    #                                    'season'])
+    # # dfm_agg_season = aggregate(dfm, groups=['monitoringSiteIdentifier',
+    # #                                         'observedPropertyDeterminandLabel',
+    # #                                         'season'])
+    # # dfm_agg_season_2020 = aggregate(dfm[dfm.year==2020],
+    # #                            groups=['monitoringSiteIdentifier',
+    # #                                    'observedPropertyDeterminandLabel',
+    # #                                    'season'])
     # dfm_agg_site = aggregate(dfm, groups=['monitoringSiteIdentifier',
     #                                       'parameterWaterBodyCategory',
     #                                       'observedPropertyDeterminandLabel'])
     # dfm_agg_wb = aggregate(dfm, groups=['parameterWaterBodyCategory',
     #                                     'observedPropertyDeterminandLabel'])
     
-    dist, labels, n_targets, wb_data, train_perc, x_train, x_test, y_train, y_test = prep_waterBody_data(dfm_agg_site, dfm_agg_wb, n_meas=5000, thresh_targets=5, thresh_sitesPerWB=0, rebalance=True, train_perc=0.5)
-    y_pred = classify_data(train_perc, x_train, x_test, y_train, y_test, method='Random Forest')
+    dist, labels, n_targets, wb_data, train_perc, x_train, x_test, y_train, y_test = prep_waterBody_data(dfm_agg_site, dfm_agg_wb, n_meas=5000, thresh_targets=5, thresh_sitesPerWB=0, rebalance=False, train_perc=0.5)
+    y_pred = classify_data(train_perc, x_train, x_test, y_train, y_test, method='K-Neighbors')
     
-    wb_map = {'CW': 0,
-              'GW': 1,
-              'LW': 2,
-              'RW': 3}
-    wb_map = {'CW': 0,
-              'GW': 1,
-              'LW': 2,
-              'RW': 3,
-              'TW': 4}
-    cluster_labels = labels.map(wb_map)
+    # wb_map = {'CW': 0,
+    #           'GW': 1,
+    #           'LW': 2,
+    #           'RW': 3}
+    # wb_map = {'CW': 0,
+    #           'GW': 1,
+    #           'LW': 2,
+    #           'RW': 3,
+    #           'TW': 4}
+    # cluster_labels = labels.map(wb_map)
     cluster_labels = cluster_data(wb_data, method='custom')
     proj_data(wb_data, n_targets, cluster_labels)
     
